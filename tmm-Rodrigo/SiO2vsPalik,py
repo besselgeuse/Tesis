@@ -1,0 +1,22 @@
+#%%
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
+from tmm_utils_Rodrigo import load_interp
+#%%
+SiO2 = (load_interp('./indices/nkdata/SiO2.nkv'))
+SiO2_Palik = (load_interp('./indices/nkdata/SiO2_Palik.nk',skiprows=1,unit='um'))
+# %%
+lams = np.arange(300,901,1)
+
+SiO2n = SiO2[0](lams)
+SiO2_Palikn = SiO2_Palik[0](lams)
+
+plt.figure(figsize=[10,8])
+plt.plot(lams,SiO2n,color='red',label='SiO2')
+plt.plot(lams,SiO2_Palikn,color='red',label='SiO2 Palik')
+plt.legend()
+plt.grid()
+plt.xlabel("longitud de onda")
+plt.ylabel("indice de refracciòn")
+# %%

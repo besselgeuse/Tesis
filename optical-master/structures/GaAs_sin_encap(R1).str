@@ -1,0 +1,6 @@
+"GaAs-sin-encap"
+TopMedium,n/air.in3,not_selected,not_selected,100,0,0,0,0,0
+T1_porosa,n/T1_porosa.in3,not_selected,not_selected,100,0,0,890,0,0
+T1_densa,n/T1_densa.in3,not_selected,not_selected,100,0,0,510,0,0
+InGaP,n/InGaPSch.in3,not_selected,not_selected,100,0,0,250,0,0
+GaAs,n/GaAs_Palik.in3,not_selected,not_selected,100,0,0,0,0,0

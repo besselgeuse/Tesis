@@ -1,0 +1,8 @@
+"GaAs-encap"
+TopMedium,n/air.in3,not_selected,not_selected,100,0,0,0,0,0
+MgF2,n/MgF2.in3,not_selected,not_selected,100,0,0,1000,0,0
+glass,n/Vidrio.in3,not_selected,not_selected,100,0,0,3000000,1,0
+T1_porosa,n/T1_porosa.in3,not_selected,not_selected,100,0,0,1020,0,0
+T1_densa,n/T1_densa.in3,not_selected,not_selected,100,0,0,550,0,0
+InGaP,n/InGaPSch.in3,not_selected,not_selected,100,0,0,250,0,0
+GaAs,n/GaAs_Palik.in3,not_selected,not_selected,100,0,0,0,0,0

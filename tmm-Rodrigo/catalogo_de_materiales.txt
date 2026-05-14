@@ -1,0 +1,18 @@
+{
+        'air': lambda: (constant_fn(1.0), constant_fn(0.0)),
+        'GaAs': lambda: load_interp(f'{ruta_materiales}/GaAs_Palik.nk', skiprows=1),
+        'InGaP': lambda: load_interp(f'{ruta_materiales}/InGaPSch.nk', skiprows=1),
+        'MgF2': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/MgF2.nkv', skiprows=1),
+        'vidrio': lambda: load_interp(f'{ruta_materiales}/glass_thales.nk', skiprows=1),
+        'SiO2': lambda: load_interp(f'{ruta_materiales}/nkdata/SiO2_Palik.nk', skiprows=1, unit='um'),
+        'Si': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/Si.nk', skiprows=1),
+        'Rutilo': lambda: load_interp(f'{ruta_materiales}/TiO2Palik.nk', unit='um', skiprows=1),
+        'T1_densa': lambda: (modelo_T1, load_interp(f'{ruta_materiales}/TiO2Palik.nk', unit='um', skiprows=1)[1]),
+        'T1_porosa': lambda: (brugg_fn(modelo_T1, constant_fn(1.0), f_T1), load_interp(f'{ruta_materiales}/TiO2Palik.nk', unit='um', skiprows=1)[1]),
+        'ZnSe': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/ZnSe.nk', skiprows=1),
+        'AlAs': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/AlAs.nk', skiprows=1),
+        'Al2O3': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/Al2O3.nk', skiprows=1),
+        'HfO2': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/HfO2.nk', skiprows=1),
+        'SiNx': lambda: load_interp(f'{ruta_materiales}/nkdata/optical/SiNx.nk', skiprows=1),
+        'Aluminum' : lambda: load_interp_in3(f'{ruta_materiales}/nkdata/optical/Aluminum.in3', unit='A'),
+    }
