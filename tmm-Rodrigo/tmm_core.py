@@ -18,7 +18,7 @@ so you can call them with tmm.coh_tmm(...) etc.
 """
 
 import numpy as np
-
+import torch
 import sys
 
 EPSILON = sys.float_info.epsilon  # typical floating-point calculation error
@@ -1023,3 +1023,309 @@ def beer_lambert(alphas, fraction, dist):
     output = fraction[:, None]*alphas[:, None]*expn
 
     return output/1e9
+
+
+
+
+def list_snell_torch(n_list, th_0):
+    """
+    Versión PyTorch de list_snell. Calcula el ángulo de propagación en cada capa
+    usando la ley de Snell. Los ángulos pueden ser complejos.
+    n_list: tensor complejo [num_layers, num_wl]
+    th_0: ángulo de incidencia (escalar o tensor)
+    """
+    if not isinstance(th_0, torch.Tensor):
+        th_0 = torch.tensor(th_0, dtype=n_list.dtype, device=n_list.device)
+    else:
+        th_0 = th_0.to(dtype=n_list.dtype, device=n_list.device)
+    return torch.asin(n_list[0] * torch.sin(th_0) / n_list)
+
+
+def interface_r_torch(pol, n_i, n_f, th_i, th_f):
+    """
+    Versión PyTorch del coeficiente de reflexión de Fresnel.
+    """
+    if pol == 's':
+        return ((n_i * torch.cos(th_i) - n_f * torch.cos(th_f)) /
+                (n_i * torch.cos(th_i) + n_f * torch.cos(th_f)))
+    elif pol == 'p':
+        return ((n_f * torch.cos(th_i) - n_i * torch.cos(th_f)) /
+                (n_f * torch.cos(th_i) + n_i * torch.cos(th_f)))
+    else:
+        raise ValueError("Polarization must be 's' or 'p'")
+
+
+def interface_t_torch(pol, n_i, n_f, th_i, th_f):
+    """
+    Versión PyTorch del coeficiente de transmisión de Fresnel.
+    """
+    if pol == 's':
+        return 2 * n_i * torch.cos(th_i) / (n_i * torch.cos(th_i) + n_f * torch.cos(th_f))
+    elif pol == 'p':
+        return 2 * n_i * torch.cos(th_i) / (n_f * torch.cos(th_i) + n_i * torch.cos(th_f))
+    else:
+        raise ValueError("Polarization must be 's' or 'p'")
+
+
+def make_2x2_array_torch(a, b, c, d):
+    """
+    Versión PyTorch de make_2x2_array. Crea un array batch de matrices 2x2.
+    Inputs: tensores de forma [num_wl]
+    Output: tensor de forma [num_wl, 2, 2]
+    """
+    return torch.stack([
+        torch.stack([a, b], dim=-1),
+        torch.stack([c, d], dim=-1)
+    ], dim=-2)
+
+
+def R_from_r_torch(r):
+    """
+    Versión PyTorch de R_from_r. Calcula la potencia reflejada.
+    Usa (r * r.conj()).real para mantener el grafo de autograd.
+    """
+    return (r * r.conj()).real
+
+
+def T_from_t_torch(pol, t, n_i, n_f, th_i, th_f):
+    """
+    Versión PyTorch de T_from_t. Calcula la potencia transmitida.
+    """
+    # Asegurar que th_i y th_f sean tensores
+    if not isinstance(th_i, torch.Tensor):
+        th_i = torch.tensor(th_i, dtype=n_i.dtype)
+    if not isinstance(th_f, torch.Tensor):
+        th_f = torch.tensor(th_f, dtype=n_f.dtype)
+    if pol == 's':
+        return (t * t.conj()).real * ((n_f * torch.cos(th_f)).real / (n_i * torch.cos(th_i)).real)
+    elif pol == 'p':
+        return (t * t.conj()).real * ((n_f * torch.conj(torch.cos(th_f))).real /
+                                      (n_i * torch.conj(torch.cos(th_i))).real)
+    else:
+        raise ValueError("Polarization must be 's' or 'p'")
+
+
+def coh_tmm_torch(pol, n_list, d_list, th_0, lam_vac):
+    """
+    Versión diferenciable y BATCHED en PyTorch del Método de la Matriz de Transferencia.
+    Permite optimizar d_list mediante Autograd.
+    
+    Soporta batch: si d_list tiene forma [batch, num_layers, num_wl],
+    las salidas R, T tendrán forma [batch, num_wl].
+    Si d_list tiene forma [num_layers, num_wl], las salidas son [num_wl].
+    """
+    # 1. Asegurar que los inputs sean tensores de PyTorch
+    if not isinstance(lam_vac, torch.Tensor):
+        lam_vac = torch.tensor(lam_vac, dtype=torch.float64, device=n_list.device)
+    if not isinstance(th_0, torch.Tensor):
+        th_0 = torch.tensor(th_0, dtype=n_list.real.dtype if n_list.is_complex() else n_list.dtype,
+                            device=n_list.device)
+    
+    # Detectar dimensión batch
+    squeeze_output = False
+    if d_list.dim() == 2:  # [num_layers, num_wl] -> sin batch
+        d_list = d_list.unsqueeze(0)  # [1, num_layers, num_wl]
+        squeeze_output = True
+    
+    batch_size = d_list.shape[0]
+    num_layers = n_list.shape[0]
+    num_wl = n_list.shape[1]
+
+    # 2. Ángulos y kz (NO dependen de d_list, se calculan una sola vez)
+    th_list = list_snell_torch(n_list, th_0)  # [num_layers, num_wl]
+    kz_list = 2 * torch.pi * n_list * torch.cos(th_list) / lam_vac  # [num_layers, num_wl]
+    
+    # 3. Delta (fase): [batch, num_layers, num_wl] via broadcasting
+    delta = kz_list.unsqueeze(0) * d_list
+    
+    # Manejo de capas opacas (solo capas finitas 1..num_layers-2)
+    inner = delta[:, 1:-1, :]
+    cond = inner.imag > 100
+    inner = torch.where(cond, inner.real + 100j, inner)
+    delta = torch.cat([delta[:, :1, :], inner, delta[:, -1:, :]], dim=1)
+
+    # 4. Coeficientes de Fresnel (NO dependen de d_list): [num_wl] cada uno
+    t_list_vals = []
+    r_list_vals = []
+    for i in range(num_layers - 1):
+        t_list_vals.append(interface_t_torch(pol, n_list[i], n_list[i+1], th_list[i], th_list[i+1]))
+        r_list_vals.append(interface_r_torch(pol, n_list[i], n_list[i+1], th_list[i], th_list[i+1]))
+
+    # 5. Multiplicación matricial BATCHED
+    # Inicializar Mtilde como identidad: [batch, num_wl, 2, 2]
+    ones_bw = torch.ones(batch_size, num_wl, dtype=delta.dtype, device=delta.device)
+    zeros_bw = torch.zeros_like(ones_bw)
+    Mtilde = make_2x2_array_torch(ones_bw, zeros_bw, zeros_bw, ones_bw)
+    
+    for i in range(1, num_layers - 1):
+        delta_i = delta[:, i, :]  # [batch, num_wl]
+        r_i = r_list_vals[i].unsqueeze(0).expand(batch_size, -1)  # [batch, num_wl]
+        t_i = t_list_vals[i].unsqueeze(0).expand(batch_size, -1)  # [batch, num_wl]
+        
+        A = make_2x2_array_torch(
+            torch.exp(-1j * delta_i), torch.zeros_like(delta_i),
+            torch.zeros_like(delta_i), torch.exp(1j * delta_i)
+        )  # [batch, num_wl, 2, 2]
+        
+        B = make_2x2_array_torch(
+            torch.ones_like(r_i), r_i, r_i, torch.ones_like(r_i)
+        )  # [batch, num_wl, 2, 2]
+        
+        d_coeff = (1 / t_i).unsqueeze(-1).unsqueeze(-1)  # [batch, num_wl, 1, 1]
+        M_i = d_coeff * torch.matmul(A, B)
+        Mtilde = torch.matmul(Mtilde, M_i)
+
+    # Interfaz frontal (0 -> 1)
+    r_0 = r_list_vals[0].unsqueeze(0).expand(batch_size, -1)
+    t_0 = t_list_vals[0].unsqueeze(0).expand(batch_size, -1)
+    A_front = make_2x2_array_torch(
+        torch.ones_like(r_0), r_0, r_0, torch.ones_like(r_0)
+    )
+    d_front = (1 / t_0).unsqueeze(-1).unsqueeze(-1)
+    M_front = d_front * A_front
+    Mtilde = torch.matmul(M_front, Mtilde)
+
+    # 6. Coeficientes r, t: [batch, num_wl]
+    r = Mtilde[:, :, 1, 0] / Mtilde[:, :, 0, 0]
+    t = 1.0 / Mtilde[:, :, 0, 0]
+
+    # 7. Potencias
+    R = R_from_r_torch(r)
+    T = T_from_t_torch(pol, t, n_list[0], n_list[-1], th_0, th_list[-1])
+
+    # Si no había batch, quitar la dimensión extra
+    if squeeze_output:
+        r, t, R, T = r.squeeze(0), t.squeeze(0), R.squeeze(0), T.squeeze(0)
+
+    return {'r': r, 't': t, 'R': R, 'T': T}
+def interface_R_torch(pol, n_i, n_f, th_i, th_f):
+    """Reflectance at an interface (PyTorch)."""
+    r = interface_r_torch(pol, n_i, n_f, th_i, th_f)
+    return R_from_r_torch(r)
+
+def interface_T_torch(pol, n_i, n_f, th_i, th_f):
+    """Transmittance at an interface (PyTorch)."""
+    t = interface_t_torch(pol, n_i, n_f, th_i, th_f)
+    return T_from_t_torch(pol, t, n_i, n_f, th_i, th_f)
+
+def inc_tmm_torch(pol, n_list, d_list, c_list, th_0, lam_vac):
+    """
+    Versión diferenciable y BATCHED en PyTorch del TMM Incoherente.
+    Soporta batch: si d_list tiene forma [batch, num_layers, num_wl],
+    las salidas R, T tendrán forma [batch, num_wl].
+    """
+    if not isinstance(lam_vac, torch.Tensor):
+        lam_vac = torch.tensor(lam_vac, dtype=torch.float64, device=n_list.device)
+    if not isinstance(th_0, torch.Tensor):
+        th_0 = torch.tensor(th_0, dtype=n_list.real.dtype if n_list.is_complex() else n_list.dtype, device=n_list.device)
+        
+    squeeze_output = False
+    if d_list.dim() == 2:
+        d_list = d_list.unsqueeze(0)
+        squeeze_output = True
+        
+    batch_size = d_list.shape[0]
+    num_layers = n_list.shape[0]
+    num_wl = n_list.shape[1]
+
+    # Obtenemos la estructura usando la funcion numpy original y dummies
+    dummy_n = np.zeros(num_layers)
+    dummy_d = np.array([np.inf] + [1.0]*(num_layers-2) + [np.inf])
+    groups = inc_group_layers(dummy_n, dummy_d, c_list)
+    
+    num_inc_layers = groups['num_inc_layers']
+    num_stacks = groups['num_stacks']
+    all_from_inc = groups['all_from_inc']
+    stack_from_inc = groups['stack_from_inc']
+    all_from_stack = groups['all_from_stack']
+    
+    th_list = list_snell_torch(n_list, th_0)
+    
+    coh_tmm_data_list = []
+    coh_tmm_bdata_list = []
+    
+    for i in range(num_stacks):
+        idxs = all_from_stack[i]
+        stack_n_list = n_list[idxs]
+        stack_d_list = d_list[:, idxs, :]
+        stack_th_0 = th_list[idxs[0]]
+        
+        data = coh_tmm_torch(pol, stack_n_list, stack_d_list, stack_th_0, lam_vac)
+        coh_tmm_data_list.append(data)
+        
+        stack_n_list_rev = torch.flip(stack_n_list, [0])
+        stack_d_list_rev = torch.flip(stack_d_list, [1])
+        stack_th_0_rev = th_list[idxs[-1]]
+        
+        bdata = coh_tmm_torch(pol, stack_n_list_rev, stack_d_list_rev, stack_th_0_rev, lam_vac)
+        coh_tmm_bdata_list.append(bdata)
+        
+    P_list = []
+    for inc_index in range(num_inc_layers):
+        if inc_index == 0 or inc_index == num_inc_layers - 1:
+            P_list.append(None) # Not used
+        else:
+            i = all_from_inc[inc_index]
+            d_i = d_list[:, i, :] # [batch, num_wl]
+            n_i = n_list[i].unsqueeze(0) # [1, num_wl]
+            th_i = th_list[i].unsqueeze(0) # [1, num_wl]
+            P = torch.exp(-4 * torch.pi * d_i * (n_i * torch.cos(th_i)).imag / lam_vac)
+            P = torch.clamp(P, min=1e-30)
+            P_list.append(P)
+            
+    T_list = {}
+    R_list = {}
+    
+    for inc_index in range(num_inc_layers - 1):
+        alllayer_index = all_from_inc[inc_index]
+        nextstack_index = stack_from_inc[inc_index + 1]
+        
+        if np.isnan(nextstack_index): # Siguiente capa es incoherente directamente
+            n_i = n_list[alllayer_index]
+            n_f = n_list[alllayer_index + 1]
+            th_i = th_list[alllayer_index]
+            th_f = th_list[alllayer_index + 1]
+            
+            R_list[(inc_index, inc_index+1)] = interface_R_torch(pol, n_i, n_f, th_i, th_f).unsqueeze(0).expand(batch_size, -1)
+            T_list[(inc_index, inc_index+1)] = interface_T_torch(pol, n_i, n_f, th_i, th_f).unsqueeze(0).expand(batch_size, -1)
+            R_list[(inc_index+1, inc_index)] = interface_R_torch(pol, n_f, n_i, th_f, th_i).unsqueeze(0).expand(batch_size, -1)
+            T_list[(inc_index+1, inc_index)] = interface_T_torch(pol, n_f, n_i, th_f, th_i).unsqueeze(0).expand(batch_size, -1)
+        else:
+            nextstack_index = int(nextstack_index)
+            R_list[(inc_index, inc_index+1)] = coh_tmm_data_list[nextstack_index]['R']
+            T_list[(inc_index, inc_index+1)] = coh_tmm_data_list[nextstack_index]['T']
+            R_list[(inc_index+1, inc_index)] = coh_tmm_bdata_list[nextstack_index]['R']
+            T_list[(inc_index+1, inc_index)] = coh_tmm_bdata_list[nextstack_index]['T']
+            
+    for key in T_list:
+        T_list[key] = torch.clamp(T_list[key], min=1e-30)
+        
+    ones = torch.ones(batch_size, num_wl, dtype=torch.float64, device=n_list.device)
+    
+    Ltilde_00 = ones / T_list[(0, 1)]
+    Ltilde_01 = -R_list[(1, 0)] / T_list[(0, 1)]
+    Ltilde_10 = R_list[(0, 1)] / T_list[(0, 1)]
+    Ltilde_11 = (T_list[(1, 0)] * T_list[(0, 1)] - R_list[(1, 0)] * R_list[(0, 1)]) / T_list[(0, 1)]
+    
+    Ltilde = make_2x2_array_torch(Ltilde_00, Ltilde_01, Ltilde_10, Ltilde_11)
+    
+    for i in range(1, num_inc_layers - 1):
+        P = P_list[i]
+        L_prop = make_2x2_array_torch(ones/P, torch.zeros_like(P), torch.zeros_like(P), P)
+        
+        L_int_00 = ones / T_list[(i, i+1)]
+        L_int_01 = -R_list[(i+1, i)] / T_list[(i, i+1)]
+        L_int_10 = R_list[(i, i+1)] / T_list[(i, i+1)]
+        L_int_11 = (T_list[(i+1, i)] * T_list[(i, i+1)] - R_list[(i+1, i)] * R_list[(i, i+1)]) / T_list[(i, i+1)]
+        L_int = make_2x2_array_torch(L_int_00, L_int_01, L_int_10, L_int_11)
+        
+        L = torch.matmul(L_prop, L_int)
+        Ltilde = torch.matmul(Ltilde, L)
+        
+    T = ones / Ltilde[:, :, 0, 0]
+    R = Ltilde[:, :, 1, 0] / Ltilde[:, :, 0, 0]
+    
+    if squeeze_output:
+        R, T = R.squeeze(0), T.squeeze(0)
+        
+    return {'R': R, 'T': T}

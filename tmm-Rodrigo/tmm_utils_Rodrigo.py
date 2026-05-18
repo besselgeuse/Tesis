@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 Created on Thu Mar 26 17:45:17 2020
@@ -13,13 +14,15 @@ import os
 import pickle
 import sys
 import importlib.util
+import torch
+import torch.optim as optim
 
 # 1. Definimos la ruta exacta al archivo tmm_core.py de Simon
 
-ruta_tmm_simon = r".\tmm_core.py"
+tmm_path = r".\tmm_core.py"
 
 # 2. Cargamos el módulo manualmente desde esa dirección
-spec = importlib.util.spec_from_file_location("tmm", ruta_tmm_simon)
+spec = importlib.util.spec_from_file_location("tmm", tmm_path)
 tmm = importlib.util.module_from_spec(spec)
 sys.modules["tmm"] = tmm # Esto asegura que otros scripts vean esta versión
 spec.loader.exec_module(tmm)
@@ -238,6 +241,188 @@ def calculate_RT(stack, materials, lams, pol='s', th_0=0, thicks=None):
 
               
 
+
+
+def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s', th_0=0.0, num_starts=50, num_epochs=150, lr=2.0, use_cuda=False):
+    """
+    Optimiza el espesor de un stack de capas delgadas usando PyTorch Autograd.
+    
+    Parámetros:
+    - n_list: Tensor complejo de PyTorch (torch.complex128) con los índices [num_capas, num_lams].
+    - d_bounds: Lista que define los límites o valores fijos para cada capa finita.
+                Puede contener:
+                - Tupla/Lista (min, max): para optimizar esa capa dentro de dichos límites.
+                - Float/Int o Tupla (val, val): para mantener esa capa con un espesor constante fijo.
+    - lams: Tensor con las longitudes de onda.
+    - c_list: Lista opcional indicando 'c' (coherente) o 'i' (incoherente) para cada capa.
+              Si se provee, utiliza la versión inc_tmm_torch para cálculos gruesos.
+    - weights: Tensor opcional con los pesos (por ejemplo, espectro solar * IQE * wavelength)
+               para realizar una optimización por reflectancia ponderada (Jsc).
+    - pol: Polarización, 's' o 'p'.
+    - th_0: Ángulo de incidencia (radianes).
+    - num_starts: Cantidad de semillas aleatorias para evitar mínimos locales.
+    - num_epochs: Número de iteraciones del Descenso de Gradiente.
+    - lr: Learning rate (tasa de aprendizaje) para el optimizador Adam.
+    - use_cuda: Si es True, utiliza la GPU para acelerar los cálculos (si está disponible).
+    """
+    device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
+    print(f"Ejecutando en dispositivo: {device}")
+    
+    # Mover tensores al dispositivo
+    n_list = n_list.to(device)
+    lams = lams.to(device)
+    
+    if weights is not None:
+        if not isinstance(weights, torch.Tensor):
+            weights = torch.tensor(weights, dtype=torch.float64, device=device)
+        else:
+            weights = weights.to(device)
+        # Normalizar pesos para asegurar promedio ponderado correcto
+        weights = weights / weights.sum()
+    
+    num_layers = n_list.shape[0]
+    num_finite_layers = num_layers - 2
+    num_wl = n_list.shape[1]
+    
+    if len(d_bounds) != num_finite_layers:
+        raise ValueError(f"d_bounds debe tener longitud igual al número de capas finitas ({num_finite_layers}), pero tiene {len(d_bounds)}.")
+    
+    # 1. ANALIZAR CAPAS OPTIMIZABLES Y FIJAS
+    is_optimizable = []
+    opt_bounds = []  # Límites (min, max) para optimizables
+    fixed_values = {}  # Mapa de idx -> valor_fijo para no optimizables
+    
+    for idx, b in enumerate(d_bounds):
+        if isinstance(b, (tuple, list)):
+            d_min, d_max = float(b[0]), float(b[1])
+            if d_min == d_max:
+                is_optimizable.append(False)
+                fixed_values[idx] = d_min
+            else:
+                is_optimizable.append(True)
+                opt_bounds.append((d_min, d_max))
+        else:
+            is_optimizable.append(False)
+            fixed_values[idx] = float(b)
+            
+    num_opt_layers = sum(is_optimizable)
+    print(f"Capas a optimizar: {num_opt_layers} | Capas fijas: {num_finite_layers - num_opt_layers}")
+    
+    if num_opt_layers == 0:
+        raise ValueError("No se definieron capas optimizables en d_bounds (todas son fijas).")
+        
+    # 2. INICIALIZACIÓN MULTI-START EN EL ESPACIO NO ACOTODO (LOGIT)
+    # Inicializamos d_initial en el espacio físico dentro de [d_min, d_max],
+    # y luego lo mapeamos a d_opt no acotado para usar el truco del Sigmoide.
+    d_initial = torch.zeros((num_starts, num_opt_layers), dtype=torch.float64, device=device)
+    opt_idx = 0
+    for idx, opt in enumerate(is_optimizable):
+        if opt:
+            d_min, d_max = opt_bounds[opt_idx]
+            d_init_phys = torch.empty(num_starts, device=device).uniform_(d_min, d_max)
+            # Mapeo inverso de sigmoide (logit)
+            p = (d_init_phys - d_min) / (d_max - d_min)
+            p = torch.clamp(p, 1e-7, 1.0 - 1e-7)  # Evitar desbordes numéricos
+            d_initial[:, opt_idx] = torch.log(p / (1.0 - p))
+            opt_idx += 1
+            
+    d_opt = d_initial.clone().detach().requires_grad_(True)
+    
+    # 3. OPTIMIZADOR
+    optimizer = optim.Adam([d_opt], lr=lr)
+    
+    print(f"Iniciando optimización con Autograd ({num_starts} semillas en paralelo)...")
+    
+    # Columna de infinitos para sustrato/superestrato: [num_starts, 1]
+    inf_col = torch.full((num_starts, 1), float('inf'), dtype=torch.float64, device=device)
+    
+    # Helper para construir d_fisico a partir de d_opt y las capas fijas
+    def reconstruct_d_fisico(d_opt_tensor):
+        d_fisico_cols = []
+        o_idx = 0
+        for idx, opt in enumerate(is_optimizable):
+            if opt:
+                d_min, d_max = opt_bounds[o_idx]
+                # Mapeo sigmoide: garantiza d_min <= espesor <= d_max estrictamente
+                col = d_min + (d_max - d_min) * torch.sigmoid(d_opt_tensor[:, o_idx])
+                d_fisico_cols.append(col)
+                o_idx += 1
+            else:
+                val = fixed_values[idx]
+                col = torch.full((d_opt_tensor.shape[0],), val, dtype=torch.float64, device=device)
+                d_fisico_cols.append(col)
+        return torch.stack(d_fisico_cols, dim=1)
+    
+    # 4. BUCLE DE OPTIMIZACIÓN (sin loop sobre semillas)
+    for epoch in range(num_epochs):
+        optimizer.zero_grad()
+        
+        d_fisico = reconstruct_d_fisico(d_opt)  # [num_starts, num_finite_layers]
+        
+        # Construir d_list BATCHED: [num_starts, num_layers]
+        d_full = torch.cat([inf_col, d_fisico, inf_col], dim=1)
+        # Expandir a [num_starts, num_layers, num_wl]
+        d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
+        
+        # UNA SOLA llamada para TODAS las semillas
+        if c_list is None:
+            result = tmm.coh_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d,
+                                        th_0=th_0, lam_vac=lams)
+        else:
+            result = tmm.inc_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d, c_list=c_list,
+                                        th_0=th_0, lam_vac=lams)
+            
+        R = result['R']  # [num_starts, num_wl]
+        
+        # Loss (promedio simple o ponderado por weights)
+        if weights is None:
+            loss_per_start = R.mean(dim=-1)
+        else:
+            loss_per_start = (R * weights).sum(dim=-1)
+            
+        loss = loss_per_start.sum()
+        
+        loss.backward()
+        optimizer.step()
+        
+        if epoch % 50 == 0:
+            mejor_R_actual = loss_per_start.min().item()
+            if weights is None:
+                print(f"Epoch {epoch}/{num_epochs} | Mejor Reflectancia Media: {mejor_R_actual*100:.2f}%")
+            else:
+                print(f"Epoch {epoch}/{num_epochs} | Mejor Reflectancia Media Ponderada: {mejor_R_actual*100:.2f}%")
+
+    # 5. EXTRACCIÓN DEL MÍNIMO GLOBAL
+    with torch.no_grad():
+        d_final_fisico = reconstruct_d_fisico(d_opt)
+        d_full = torch.cat([inf_col, d_final_fisico, inf_col], dim=1)
+        d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
+        if c_list is None:
+            result = tmm.coh_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d,
+                                        th_0=th_0, lam_vac=lams)
+        else:
+            result = tmm.inc_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d, c_list=c_list,
+                                        th_0=th_0, lam_vac=lams)
+        R_final = result['R']
+    
+    if weights is None:
+        loss_final = R_final.mean(dim=-1)
+    else:
+        loss_final = (R_final * weights).sum(dim=-1)
+        
+    best_idx = loss_final.argmin()
+    
+    best_thicknesses = d_final_fisico[best_idx].cpu().detach().numpy()
+    best_R_curve = R_final[best_idx].cpu().detach().numpy()
+    
+    print(f"\n¡Optimización completada!")
+    print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
+    if weights is None:
+        print(f"Reflectancia media óptima: {loss_final[best_idx].item()*100:.2f}%")
+    else:
+        print(f"Reflectancia media ponderada óptima: {loss_final[best_idx].item()*100:.2f}%")
+    
+    return best_thicknesses, best_R_curve
 
 def load_stack(filename, materials):
     '''Loads stack from Xlsx used by IR-S in Matlab. 'Materials' is a dict 

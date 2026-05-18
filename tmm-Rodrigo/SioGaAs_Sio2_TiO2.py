@@ -57,7 +57,7 @@ materials['Rutilo_poroso'] = (brugg_fn(n_rutilo,constant_fn(1.0),0.5),brugg_fn(k
 
 
 #stack optico de la celda
-sustrato = "Si"
+sustrato = "GaAs"
 
 if sustrato == "GaAs":
     stack_SiO2_TiO2 = [
