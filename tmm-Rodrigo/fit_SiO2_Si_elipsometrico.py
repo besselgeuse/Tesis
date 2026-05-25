@@ -31,7 +31,7 @@ ruta_materiales = r'.'
 # Primero el Ti (para el que usaron valores experimentales)
 modelo_T1 = cauchy_fn(2.338,1.906,0.824)   #muestra T1 del paper (R-1)
 f_T1 = 0.58
-modelo_SiO2_Daniel = cauchy_fn(1.46,0.0,0.0)
+modelo_SiO2 = cauchy_fn(1.46,0.0,0.0) #esto solo es para inicializar el modelo de SiO2
 ruta_materiales = f'{ruta_materiales}\indices'
 
 materials = {
@@ -50,14 +50,14 @@ materials = {
 # Asigno k rutilo a las capas experimentales
 materials['T1_densa'] = (materials['T1_densa'][0], materials['Rutilo'][1])
 materials['T1_porosa'] = (materials['T1_porosa'][0], materials['Rutilo'][1])
-materials['SiO2_Daniel'] = (modelo_SiO2_Daniel, constant_fn(0.0))
-materials['SiO2_Si_brugge'] = (brugg_fn(modelo_SiO2_Daniel, constant_fn(1.0), 0.5), constant_fn(0.0))
+materials['modelo_SiO2'] = (modelo_SiO2, constant_fn(0.0))
+materials['SiO2_Si_brugge'] = (brugg_fn(modelo_SiO2, constant_fn(1.0), 0.5), constant_fn(0.0))
 #%%
 # ============================================================
 # 3. CARGAR DATOS EXPERIMENTALES Y CONSTRUIR n_list
 # ============================================================
 # Cargar datos experimentales de elipsometría
-wl_exp, psi_deg, delta_deg = np.loadtxt('./Files/2026/05/19/SiO2_Si_Sputtering.txt', skiprows=5, unpack=True)
+wl_exp, psi_deg, delta_deg = np.loadtxt('./Files/2026/05/21/TiO2_SiO2_Si.txt', skiprows=5, unpack=True)
 
 # Convertir ángulos de grados a radianes
 psi = np.radians(psi_deg)
@@ -77,7 +77,7 @@ Ic_exp_torch = torch.tensor(Ic_exp, dtype=torch.float64)
 lams_np = wl_exp
 
 # Orden de capas: [superestrato, capa1, sustrato] (air / SiO2 / Si)
-layer_names = ['air','SiO2_Si_brugge','SiO2_Daniel','Si']
+layer_names = ['air','T1_densa' ,'modelo_SiO2','Si']
 
 n_list_np = []
 for name in layer_names:
@@ -102,16 +102,16 @@ print("=" * 60)
 # ============================================================
 # Límites para las capas finitas [min_nm, max_nm]:
 d_bounds = [
-    (0.1, 5.0),   # SiO2 Si brugge
-    (0.1, 15.0),   # SiO2 Daniel
+    (1,60), #T1_densa
+    (1, 30),   # modelo SiO2
 ]
 
 # air / SiO2 / Si
 # air / SiO2 / Si
-c_list = ['i', 'c','c', 'i']
+c_list = ['i', 'c', 'c', 'i']
 
 # Modelos paramétricos de dispersión por capa (None para estáticas, 'cauchy' para SiO2)
-layer_models = [None, 'bruggeman' ,'cauchy', None]
+layer_models = [None,'cauchy' ,'cauchy', None]
 
 # En elipsometría, la medida NUNCA se hace a incidencia normal (0 grados)
 # porque las polarizaciones s y p son degeneradas (r_p = -r_s), haciendo que
@@ -143,8 +143,8 @@ best_thicknesses, best_Is, best_Ic, best_params = fit_ellipsometry_torch(
 fig,ax = plt.subplots(2,1,figsize=(10, 6))
 
 # # Construir etiqueta descriptiva
-sio2_label = f"SiO2={best_thicknesses[1]:.1f} nm"
-# sio2_key = 'SiO2_Daniel' if 'SiO2_Daniel' in best_params else 'SiO2'
+sio2_label = f"SiO2={best_thicknesses[1]:.1f} nm,TiO2={best_thicknesses[0]:.1f} nm"
+# sio2_key = 'modelo_SiO2' if 'modelo_SiO2' in best_params else 'SiO2'
 # if sio2_key in best_params:
 #     sio2_p = best_params[sio2_key]
 #     sio2_label += f" (A={sio2_p['A']:.3f}, B={sio2_p['B']:.3f}, C={sio2_p['C']:.3f})"
@@ -175,18 +175,108 @@ ax[1].set_xlim(450, 900)
 fig.tight_layout()
 #plt.savefig('./Files/reflectancia_optimizada_torch.png', dpi=150)
 plt.show()
+#%%
+#ahora voy a graficar el psi y delta del modelo y compararlo con el experimental
+
+psi_teo_deg = 0.5 * np.degrees(np.arcsin(np.sqrt(best_Is**2 + best_Ic**2)))
+delta_teo_deg = np.degrees(np.arctan2(best_Is, best_Ic))
+psi_exp_deg = 0.5 * np.degrees(np.arcsin(np.sqrt(Is_exp**2 + Ic_exp**2)))
+delta_exp_deg = np.degrees(np.arctan2(Is_exp, Ic_exp))
+
+fig,ax = plt.subplots(2,1,figsize=(10, 6))
+
+ax[0].plot(lams_np, psi_teo_deg, 'b-', linewidth=2, 
+         label=f'Torch Autograd: psi')
+ax[1].plot(lams_np, delta_teo_deg, 'r-', linewidth=2, 
+         label=f'Torch Autograd: delta')
+ax[0].plot(lams_np, psi_exp_deg, 'k--', linewidth=1.5, 
+         label='psi (Exp)')
+ax[1].plot(lams_np, delta_exp_deg, 'm--', linewidth=1.5, 
+         label='delta (Exp)')
+ax[0].set_xlabel(r'Longitud de onda $\lambda$ [nm]', fontsize=12)
+ax[0].set_ylabel('psi', fontsize=12)
+ax[0].set_title('Fit elipsometrico de SiO2/Si', fontsize=14)
+ax[0].grid(True, alpha=0.3)
+ax[0].legend(fontsize=11)
+ax[0].set_xlim(450, 900)
+#ax[0].set_ylim(0, None)
+ax[1].set_xlabel(r'Longitud de onda $\lambda$ [nm]', fontsize=12)
+ax[1].set_ylabel('delta', fontsize=12)
+ax[1].set_title('Fit elipsometrico de SiO2/Si', fontsize=14)
+ax[1].grid(True, alpha=0.3)
+ax[1].legend(fontsize=11)
+ax[1].set_xlim(450, 900)
+#ax[1].set_ylim(0, None)
+
+fig.tight_layout()
+#plt.savefig('./Files/reflectancia_optimizada_torch.png', dpi=150)
+plt.show()
+
+
+
 # %%
 #Ahora vamos a ver si el índice de SiO2 que nos dio es coherente con el índice de SiO2 de Palik 
 #Vamos a graficar n y k de SiO2 de Palik y el índice de SiO2 que nos dio el fit
-A = best_params['SiO2_Daniel']['A']
-B = best_params['SiO2_Daniel']['B']
-C = best_params['SiO2_Daniel']['C']
+A = best_params['modelo_SiO2']['A']
+B = best_params['modelo_SiO2']['B']
+C = best_params['modelo_SiO2']['C']
 
-SiO2_Daniel_n = cauchy_fn(A,B,C)(lams_np)
+modelo_SiO2_n = cauchy_fn(A,B,C)(lams_np)
 SiO2_Palik_n = materials['SiO2'][0](lams_np)
 
 plt.figure(figsize=(10, 6))
-plt.plot(lams_np, SiO2_Daniel_n, 'b-', linewidth=2, label='SiO2_Daniel')
+plt.plot(lams_np, modelo_SiO2_n, 'b-', linewidth=2, label='SiO2_torch')
+plt.plot(lams_np, SiO2_Palik_n, 'r-', linewidth=2, label='SiO2_Palik')
+plt.xlabel('Longitud de onda [nm]', fontsize=12)
+plt.ylabel('Indice de refracción', fontsize=12)
+plt.title('Indice de refracción de SiO2', fontsize=14)
+plt.grid(True, alpha=0.3)
+plt.legend(fontsize=11)
+plt.show()
+#%%
+#comparación de los ajustes del deltapsi2 con los datos experimentales
+
+wl_exp, psi_fit_deg, delta_fit_deg = np.loadtxt('./Files/2026/05/21/TiO2_SiO2_Si_fit.txt', skiprows=5, unpack=True)
+
+fig,ax = plt.subplots(2,1,figsize=(10, 6))
+
+ax[0].plot(wl_exp, psi_fit_deg, 'b-', linewidth=2, 
+         label=f'fit elipsometro psi')
+ax[1].plot(wl_exp, delta_fit_deg, 'r-', linewidth=2, 
+         label=f'fit elipsometro delta')
+ax[0].plot(wl_exp, psi_exp_deg, 'k--', linewidth=1.5, 
+         label='psi (Exp)')
+ax[1].plot(wl_exp, delta_exp_deg , 'm--', linewidth=1.5, 
+         label='delta (Exp)')
+ax[0].set_xlabel(r'Longitud de onda $\lambda$ [nm]', fontsize=12)
+ax[0].set_ylabel('psi', fontsize=12)
+ax[0].set_title('Fit elipsometrico de SiO2/Si', fontsize=14)
+ax[0].grid(True, alpha=0.3)
+ax[0].legend(fontsize=11)
+ax[0].set_xlim(450, 900)
+ax[1].set_xlabel(r'Longitud de onda $\lambda$ [nm]', fontsize=12)
+ax[1].set_ylabel('delta', fontsize=12)
+ax[1].set_title('Fit elipsometrico de SiO2/Si', fontsize=14)
+ax[1].grid(True, alpha=0.3)
+ax[1].legend(fontsize=11)
+ax[1].set_xlim(450, 900)
+
+
+fig.tight_layout()
+#plt.savefig('./Files/reflectancia_optimizada_torch.png', dpi=150)
+plt.show()
+
+# %%
+#comparación con los del ajuste que hizo el deltapsi2
+A = -1.8560920
+B = 13.4599300
+C = -13.2586000
+modelo_SiO2_n = cauchy_fn(A,B,C)(lams_np)
+#Ahora a partir del n quiero conseguir el psi y el delta del modelo y compararlo con el experimental
+SiO2_Palik_n = materials['SiO2'][0](lams_np)
+
+plt.figure(figsize=(10, 6))
+plt.plot(lams_np, modelo_SiO2_n, 'b-', linewidth=2, label='SiO2_elipsometro')
 plt.plot(lams_np, SiO2_Palik_n, 'r-', linewidth=2, label='SiO2_Palik')
 plt.xlabel('Longitud de onda [nm]', fontsize=12)
 plt.ylabel('Indice de refracción', fontsize=12)
@@ -196,11 +286,3 @@ plt.legend(fontsize=11)
 plt.show()
 
 # %%
-#comparación con los del ajuste que hizo el deltapsi2
-A = 2.4159710
-B = 101.5135000
-C = -198.7589000
-SiO2_Daniel_n = cauchy_fn(A,B,C)(lams_np)
-wl_exp, psi_deg, delta_deg = np.loadtxt('./Files/2026/05/19/SiO2_Si_Sputtering.txt', skiprows=5, unpack=True)
-#Ahora a partir del n quiero conseguir el psi y el delta del modelo y compararlo con el experimental
-

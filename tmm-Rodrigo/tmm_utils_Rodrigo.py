@@ -505,10 +505,10 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
     ones_bw = torch.ones(batch_size, num_wl, dtype=delta.dtype, device=device)
     zeros_bw = torch.zeros_like(ones_bw)
     
-    Mtilde = torch.stack([
-        torch.stack([ones_bw, zeros_bw], dim=-1),
-        torch.stack([zeros_bw, ones_bw], dim=-1)
-    ], dim=-2)
+    Mtilde = torch.cat([
+        ones_bw.unsqueeze(-1), zeros_bw.unsqueeze(-1),
+        zeros_bw.unsqueeze(-1), ones_bw.unsqueeze(-1)
+    ], dim=-1).view(batch_size, num_wl, 2, 2)
     
     for i in range(1, num_layers - 1):
         delta_i = delta[:, i, :]
@@ -521,15 +521,15 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
         ones_i = torch.ones_like(delta_i)
         
         # A y B shape: [batch, num_wl, 2, 2]
-        A = torch.stack([
-            torch.stack([exp_minus, zeros_i], dim=-1),
-            torch.stack([zeros_i, exp_plus], dim=-1)
-        ], dim=-2)
+        A = torch.cat([
+            exp_minus.unsqueeze(-1), zeros_i.unsqueeze(-1),
+            zeros_i.unsqueeze(-1), exp_plus.unsqueeze(-1)
+        ], dim=-1).view(batch_size, num_wl, 2, 2)
         
-        B = torch.stack([
-            torch.stack([ones_i, r_i], dim=-1),
-            torch.stack([r_i, ones_i], dim=-1)
-        ], dim=-2)
+        B = torch.cat([
+            ones_i.unsqueeze(-1), r_i.unsqueeze(-1),
+            r_i.unsqueeze(-1), ones_i.unsqueeze(-1)
+        ], dim=-1).view(batch_size, num_wl, 2, 2)
         
         d_coeff = (1.0 / t_i).unsqueeze(-1).unsqueeze(-1)
         M_i = d_coeff * torch.matmul(A, B)
@@ -540,10 +540,10 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
     t_0 = t_list_vals[0]
     ones_0 = torch.ones_like(r_0)
     
-    A_front = torch.stack([
-        torch.stack([ones_0, r_0], dim=-1),
-        torch.stack([r_0, ones_0], dim=-1)
-    ], dim=-2)
+    A_front = torch.cat([
+        ones_0.unsqueeze(-1), r_0.unsqueeze(-1),
+        r_0.unsqueeze(-1), ones_0.unsqueeze(-1)
+    ], dim=-1).view(batch_size, num_wl, 2, 2)
     
     d_front = (1.0 / t_0).unsqueeze(-1).unsqueeze(-1)
     M_front = d_front * A_front
@@ -751,7 +751,11 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, c_list=None, 
                 col = torch.full((d_opt_tensor.shape[0],), val, dtype=torch.float64, device=device)
                 d_fisico_cols.append(col)
         return torch.stack(d_fisico_cols, dim=1)
-        
+    # Precomputar dependencias de lams para acelerar los cálculos paramétricos
+    lams_2d = lams.unsqueeze(0)  # [1, num_wl]
+    inv_lam2 = 1e4 / (lams_2d ** 2)
+    inv_lam4 = 1e9 / (lams_2d ** 4)
+
     def reconstruct_n_list_batched(p_opt_tensor):
         # Construir una lista de tensores por capa (sin operaciones in-place)
         layer_tensors = [None] * num_layers
@@ -781,12 +785,11 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, c_list=None, 
                     p_phys = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
                     p_phys_list.append(p_phys)
                     
-                lams_2d = lams.unsqueeze(0)  # [1, num_wl]
                 if model_type == 'cauchy':
                     A = p_phys_list[0].unsqueeze(1)
                     B = p_phys_list[1].unsqueeze(1)
                     C = p_phys_list[2].unsqueeze(1)
-                    n_calc = A + B * 1e4 / (lams_2d ** 2) + C * 1e9 / (lams_2d ** 4)
+                    n_calc = A + B * inv_lam2 + C * inv_lam4
                     n_complex = n_calc.to(torch.complex128)
                 elif model_type == 'cauchy_absorbent':
                     A = p_phys_list[0].unsqueeze(1)
@@ -795,8 +798,8 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, c_list=None, 
                     D = p_phys_list[3].unsqueeze(1)
                     E = p_phys_list[4].unsqueeze(1)
                     F = p_phys_list[5].unsqueeze(1)
-                    n_calc = A + B * 1e4 / (lams_2d ** 2) + C * 1e9 / (lams_2d ** 4)
-                    k_calc = D + E * 1e4 / (lams_2d ** 2) + F * 1e9 / (lams_2d ** 4)
+                    n_calc = A + B * inv_lam2 + C * inv_lam4
+                    k_calc = D + E * inv_lam2 + F * inv_lam4
                     k_calc = torch.clamp(k_calc, min=0.0)
                     n_complex = torch.complex(n_calc, k_calc)
                     
