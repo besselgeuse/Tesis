@@ -140,6 +140,10 @@ best_thicknesses, best_R_curve = calculate_RT_torch(
     lr=1.5,            # Learning rate
     use_cuda=True      # Usar CUDA
 )
+
+
+
+
 #%%
 # ============================================================
 # 5. GRAFICAR RESULTADOS
