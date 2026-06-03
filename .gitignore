@@ -1,7 +1,7 @@
 # Archivos de datos grandes (pickle y datos de simulación)
 *.pickle
 tmm-Rodrigo/Files/
-
+APIS/ellipsometry_API/indices
 # Python
 __pycache__/
 *.py[cod]

@@ -1,0 +1,17 @@
+mejoras para el fit elipsometrico:
+1. que en las layer_names no sea necesario escribir el nombre de una capa
+si esta tiene un modelo que posteriormente sobreescribira su indice de refracción. Ej. que solo se escriba 'T1' para T1_densa
+Por otro lado el air o el Si si dederian escribirse tal cual estan en la lista de materiales puesto 
+que no se ajustan.
+
+2. poder definir los default_bounds entre los cuales va a saltar aleatoriamente los espesores de A,B,C del modelo de Cauchy.
+
+3. Como la c_list siempre es ignorada en elipsometria, quitarla como parametro.
+
+4.agregar la opcion de guardar en cache para no tener que rehacer los calculos cuando se ajusta 
+
+5. La fraccion f_air esta hardcodeada a 0.5, quiero que sea posible 
+seleccionarla manualmente y tambien seleccionar para que se optimice dentro 
+de un rango de valores entre 0.0 y 1.0.
+
+6.
