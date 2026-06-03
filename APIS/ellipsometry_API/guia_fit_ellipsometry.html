@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guía Didáctica: fit_ellipsometry_torch</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- KaTeX para renderizar ecuaciones matemáticas en cualquier dispositivo -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
+    
+    <!-- PrismJS para coloreado de código de alta calidad -->
+    <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --text-color: #94a3b8;
+            --text-light: #f8fafc;
+            --heading-color: #f1f5f9;
+            --primary-color: #a78bfa;
+            --primary-gradient: linear-gradient(135deg, #a78bfa, #7c3aed);
+            --secondary-gradient: linear-gradient(135deg, #60a5fa, #2563eb);
+            --card-bg: #131b2e;
+            --border-color: #1e293b;
+            --code-bg: #070a13;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        /* Encabezado Principal */
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            letter-spacing: -0.03em;
+        }
+
+        header p {
+            font-size: 1.15rem;
+            color: #64748b;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        /* Secciones */
+        section {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2.5rem;
+            margin-bottom: 2.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--heading-color);
+            margin-bottom: 1.5rem;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 0.75rem;
+        }
+
+        h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-light);
+            margin: 1.5rem 0 1rem 0;
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+            font-size: 1.05rem;
+        }
+
+        ul {
+            margin-bottom: 1.25rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            font-size: 1.025rem;
+        }
+
+        strong {
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        /* Fórmulas matemáticas */
+        .katex-display {
+            padding: 1rem 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            background-color: var(--code-bg);
+            border-radius: 8px;
+            margin: 1rem 0;
+            border: 1px dashed rgba(167, 139, 250, 0.2);
+        }
+
+        /* Bloques de Código */
+        pre {
+            margin: 1.5rem 0 !important;
+            border-radius: 12px !important;
+            border: 1px solid var(--border-color) !important;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+            background: var(--code-bg) !important;
+        }
+
+        code {
+            font-family: 'Consolas', 'Courier New', Courier, monospace !important;
+            font-size: 0.95rem !important;
+        }
+
+        :not(pre) > code {
+            background-color: var(--code-bg);
+            color: var(--primary-color);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9rem !important;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Diagramas en ASCII / Contenedores */
+        .diagram {
+            font-family: 'Consolas', monospace;
+            white-space: pre;
+            background-color: var(--code-bg);
+            color: #38bdf8;
+            padding: 1.25rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            border: 1px solid var(--border-color);
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: var(--border-color);
+            margin: 2rem 0;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: #64748b;
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 4rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem 0.5rem;
+            }
+
+            section {
+                padding: 1.5rem 1rem;
+                border-radius: 12px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Guía de Funcionamiento</h1>
+        <p>Análisis detallado de la física, lógica y optimización con PyTorch Autograd en la función <code>fit_ellipsometry_torch</code>.</p>
+    </header>
+
+    <!-- Sección 1 -->
+    <section>
+        <h2>1. Fundamentos Físicos de la Elipsometría</h2>
+        <p>La elipsometría es una técnica de caracterización óptica no destructiva que mide el cambio en el estado de polarización de la luz al reflejarse en una muestra.</p>
+        
+        <h3>El Parámetro Fundamental $\rho$</h3>
+        <p>Cuando la luz incide sobre una muestra con un ángulo $\theta_0$, los coeficientes de reflexión compleja para las polarizaciones transversal eléctrica ($s$) y transversal magnética ($p$) son $r_s$ y $r_p$, respectivamente. La elipsometría mide la relación entre estos coeficientes:</p>
+        
+        $$\rho = \frac{r_p}{r_s} = \tan(\psi) e^{i \Delta}$$
+        
+        <p>Donde:</p>
+        <ul>
+            <li><strong>$\psi$ (Psi)</strong> representa la relación de amplitudes entre las reflexiones de las ondas $p$ y $s$ ($\tan\psi = |r_p| / |r_s|$). Su rango físico es $[0, \pi/2]$ (o $[0^\circ, 90^\circ]$).</li>
+            <li><strong>$\Delta$ (Delta)</strong> representa la diferencia de fase introducida por la reflexión entre ambas componentes ($\Delta = \delta_p - \delta_s$). Su rango físico es $[-\pi, \pi]$ (o $[-180^\circ, 180^\circ]$).</li>
+        </ul>
+
+        <h3>Parámetros Elipsométricos Medidos: $I_s$ e $I_c$</h3>
+        <p>En la práctica, muchos elipsómetros modernos (especialmente los de modulador de fase o analizador rotatorio) no miden $\psi$ y $\Delta$ directamente. En su lugar, miden tres intensidades normalizadas conocidas como los parámetros de Stokes o coeficientes elipsométricos. Dos de los más comunes son:</p>
+        
+        $$I_s = \sin(2\psi) \sin(\Delta)$$
+        $$I_c = \sin(2\psi) \cos(\Delta)$$
+
+        <p><strong>¿Por qué el código ajusta $I_s$ e $I_c$ en lugar de $\psi$ y $\Delta$?</strong></p>
+        <ul>
+            <li><strong>Discontinuidades de Fase:</strong> El ángulo $\Delta$ tiene una discontinuidad de salto de fase natural en $-\pi$ y $\pi$ (o $-180^\circ$ y $180^\circ$). Si el optimizador intenta ajustar $\Delta$ directamente cerca de estos bordes, los gradientes se vuelven inestables o erróneos debido al salto abrupto. Al usar $\sin(\Delta)$ y $\cos(\Delta)$, la fase se comporta como funciones continuas y suaves sin saltos bruscos.</li>
+            <li><strong>Tratamiento de Singularidades:</strong> Cuando $\psi \approx 0$ (poca reflectancia en la componente $p$), la fase $\Delta$ se vuelve indeterminada y extremadamente ruidosa. Multiplicar por $\sin(2\psi)$ atenúa naturalmente el impacto del ruido de $\Delta$ en estas zonas.</li>
+        </ul>
+
+        <h3>¿Por qué la incidencia normal no funciona?</h3>
+        <p>En incidencia normal ($\theta_0 = 0^\circ$), las polarizaciones $s$ y $p$ son físicamente equivalentes y degeneradas. Por convención geométrica, $r_p = -r_s$. Esto implica que:</p>
+        
+        $$\rho = \frac{r_p}{r_s} = -1 \implies \tan(\psi) = 1 \implies \psi = 45^\circ$$
+        $$\Delta = 180^\circ \text{ (o } \pi \text{ rad)}$$
+        
+        <p>Bajo estas condiciones:</p>
+        <ul>
+            <li>$I_s = \sin(90^\circ) \sin(180^\circ) = 0$</li>
+            <li>$I_c = \sin(90^\circ) \cos(180^\circ) = -1$</li>
+        </ul>
+        <p>Dado que $I_s = 0$ e $I_c = -1$ para cualquier material y espesor a $0^\circ$, <strong>es imposible realizar elipsometría a incidencia normal</strong>. Por eso elipsómetros reales operan a ángulos oblicuos (típicamente entre $55^\circ$ y $75^\circ$), cerca del ángulo de Brewster del sustrato, donde la sensibilidad a los espesores y capas delgadas es máxima.</p>
+    </section>
+
+    <!-- Sección 2 -->
+    <section>
+        <h2>2. Optimización Paralela y Multi-Start con PyTorch</h2>
+        <p>Ajustar espesores y propiedades de refracción a partir de curvas elipsométricas es un problema altamente <strong>no lineal</strong> y con abundantes <strong>mínimos locales</strong> (debido al comportamiento oscilatorio de la interferencia óptica).</p>
+        
+        <h3>El Enfoque Tradicional vs. Enfoque PyTorch</h3>
+        <ul>
+            <li><strong>Enfoque tradicional:</strong> Algoritmos como Levenberg-Marquardt (usado en <code>scipy.optimize.curve_fit</code>) o L-BFGS-B calculan derivadas numéricas aproximadas por diferencias finitas. Si se inician desde una única semilla, quedan atrapados casi de inmediato en el mínimo local más cercano. Correr muchas semillas de manera secuencial es sumamente lento.</li>
+            <li><strong>Enfoque PyTorch:</strong>
+                <ol>
+                    <li><strong>Gradientes exactos (Autograd):</strong> PyTorch calcula los gradientes analíticos exactos de la función de pérdida con respecto a todos los parámetros optimizables mediante diferenciación automática. Esto acelera drásticamente la convergencia de optimizadores basados en gradiente como <strong>Adam</strong>.</li>
+                    <li><strong>Multi-start masivo en GPU:</strong> En lugar de ejecutar una sola optimización, representamos los parámetros como tensores de dimensión <code>[num_starts, num_parametros]</code>. PyTorch procesa de forma vectorial y paralela todas las semillas (ej. 1000 ejecuciones simultáneas) aprovechando al máximo los núcleos paralelos de la GPU o la CPU.</li>
+                </ol>
+            </li>
+        </ul>
+    </section>
+
+    <!-- Sección 3 -->
+    <section>
+        <h2>3. El Truco del Sigmoide (Sigmoid Trick)</h2>
+        <p>Los espesores y los parámetros ópticos de Cauchy tienen restricciones físicas estrictas (límites o <em>bounds</em>), por ejemplo, un espesor $d$ no puede ser menor a $0$ ni mayor a $150\text{ nm}$.</p>
+        <p>Optimizadores clásicos de PyTorch como <code>Adam</code> o <code>SGD</code> no soportan límites directamente; asumen que los parámetros pueden tomar cualquier valor real entre $-\infty$ y $\infty$. Si un espesor se volviera negativo en un paso de optimización, la simulación física colapsaría.</p>
+        
+        <h3>Mapeo Matemático con Sigmoide</h3>
+        <p>Para solucionar esto sin añadir pesadas restricciones matemáticas, aplicamos una transformación que mapea el espacio ilimitado del optimizador al espacio físico acotado de la simulación.</p>
+        <p>Sea un parámetro físico $p_{\text{phys}}$ acotado en el intervalo $[p_{\text{min}}, p_{\text{max}}]$. Definimos una variable interna llamada <strong>logit</strong> ($p_{\text{logit}}$) que puede tomar cualquier valor real en $(-\infty, \infty)$. La relación viene dada por la función sigmoide ($\sigma$):</p>
+        
+        $$p_{\text{phys}} = p_{\text{min}} + (p_{\text{max}} - p_{\text{min}}) \cdot \sigma(p_{\text{logit}})$$
+        
+        <p>Donde la función sigmoide se define como:</p>
+        $$\sigma(x) = \frac{1}{1 + e^{-x}}$$
+
+        <div class="diagram">
+  p_logit (Espacio del Optimizador)       p_phys (Espacio Físico de Simulación)
+         (-inf, +inf)                        [p_min, p_max]
+              │                                    │
+              ▼                                    ▼
+       ┌─────────────┐       ┌──────────────────────────────────────────────┐
+       │   Optim.    │ ───>  │ p_phys = p_min + (p_max-p_min) * sigmoide(x) │
+       └─────────────┘       └──────────────────────────────────────────────┘</div>
+        
+        <ul>
+            <li>Si $p_{\text{logit}} \to -\infty$, $\sigma(p_{\text{logit}}) \to 0 \implies p_{\text{phys}} \to p_{\text{min}}$.</li>
+            <li>Si $p_{\text{logit}} \to \infty$, $\sigma(p_{\text{logit}}) \to 1 \implies p_{\text{phys}} \to p_{\text{max}}$.</li>
+            <li>Si $p_{\text{logit}} = 0$, $\sigma(p_{\text{logit}}) = 0.5 \implies p_{\text{phys}}$ está exactamente en el centro del intervalo.</li>
+        </ul>
+
+        <h3>Clampeo de Logits</h3>
+        <p>Cuando el optimizador aleja mucho una variable de su óptimo, el logit puede crecer demasiado (ej. $+10$). En estos extremos lejanos de la sigmoide, su derivada $\sigma'(x) = \sigma(x)(1 - \sigma(x))$ tiende exponencialmente a cero. Esto se conoce como <strong>saturación de gradiente</strong> (o <em>vanishing gradient</em>), y hace que el optimizador se "congele" y deje de actualizar esa variable.</p>
+        <p>Para evitarlo, el código realiza un clampeo preventivo en cada época:</p>
+        <pre><code class="language-python">with torch.no_grad():
+    d_opt.data.clamp_(-5, 5)
+    if is_parametric:
+        p_opt.data.clamp_(-5, 5)</code></pre>
+        <p>Dado que $\sigma(-5) \approx 0.0067$ y $\sigma(5) \approx 0.9933$, limitar los logits a $[-5, 5]$ permite explorar el $98.6\%$ del rango físico disponible manteniendo siempre gradientes con magnitudes saludables para seguir optimizando.</p>
+    </section>
+
+    <!-- Sección 4 -->
+    <section>
+        <h2>4. Modelos de Dispersión Paramétricos</h2>
+        <p>Las capas reales cambian su índice de refracción $n$ y coeficiente de extinción $k$ según la longitud de onda $\lambda$. En lugar de optimizar un valor de $n$ independiente para cada longitud de onda (lo cual crearía cientos de variables redundantes y sobreajuste), representamos el comportamiento cromático mediante ecuaciones físicas parametrizadas.</p>
+        
+        <h3>A. Modelo de Cauchy Transparente</h3>
+        <p>Es excelente para dieléctricos de banda ancha (como $\text{SiO}_2$ o $\text{Al}_2\text{O}_3$) en el espectro visible e infrarrojo cercano, donde la absorción es nula ($k=0$):</p>
+        
+        $$n(\lambda) = A + \frac{B}{\lambda^2} + \frac{C}{\lambda^4}$$
+        
+        <p>Donde:</p>
+        <ul>
+            <li>$\lambda$ se expresa típicamente en micrómetros ($\mu\text{m}$) o nanómetros escalados para evitar problemas numéricos. En nuestro código de PyTorch, las longitudes de onda están escaladas para mantener estabilidad numérica:
+                <pre><code class="language-python">inv_lam2 = 1e4 / (lams_2d ** 2)  # Escala lambda en nm a micras de forma implícita
+inv_lam4 = 1e9 / (lams_2d ** 4)</code></pre>
+            </li>
+            <li><strong>Parámetros a optimizar:</strong> $A$ (índice base), $B$ (dispersión de primer orden), $C$ (dispersión de segundo orden).</li>
+        </ul>
+
+        <h3>B. Modelo de Cauchy Absorbente</h3>
+        <p>Útil para materiales con una absorción débil o moderada en el espectro ultravioleta/azul (como algunos óxidos metálicos como $\text{TiO}_2$). Modelamos la parte compleja del índice de refracción $\tilde{n} = n + i k$ con coeficientes independientes para la absorción:</p>
+        
+        $$n(\lambda) = A + \frac{B}{\lambda^2} + \frac{C}{\lambda^4}$$
+        $$k(\lambda) = D + \frac{E}{\lambda^2} + \frac{F}{\lambda^4}$$
+        
+        <ul>
+            <li><strong>Parámetros a optimizar:</strong> 6 parámetros en total ($A, B, C$ para $n$ y $D, E, F$ para $k$). El código asegura que $k$ no tome valores físicos negativos aplicando:
+                <pre><code class="language-python">k_calc = torch.clamp(k_calc, min=0.0)</code></pre>
+            </li>
+        </ul>
+
+        <h3>C. Modelo de Bruggeman (Effective Medium Approximation - EMA)</h3>
+        <p>Permite modelar una capa mezcla (por ejemplo, una capa porosa o rugosa) compuesta por dos fases: una matriz densa y aire/vacío ($n_{\text{air}} = 1.0$).</p>
+        <p>La relación matemática que define el índice complejo efectivo $n_{\text{eff}}$ de la mezcla viene dada por la ecuación cuadrática de Bruggeman:</p>
+        
+        $$f_{\text{air}} \frac{n_{\text{air}}^2 - n_{\text{eff}}^2}{n_{\text{air}}^2 + 2 n_{\text{eff}}^2} + (1 - f_{\text{air}}) \frac{n_{\text{base}}^2 - n_{\text{eff}}^2}{n_{\text{base}}^2 + 2 n_{\text{eff}}^2} = 0$$
+        
+        <p>Donde:</p>
+        <ul>
+            <li>$n_{\text{base}}$ es el índice complejo del material denso subyacente.</li>
+            <li>$f_{\text{air}}$ es la fracción volumétrica de aire (porosidad).</li>
+            <li><strong>Configuración en el código:</strong>
+                <ul>
+                    <li><strong>Fijo:</strong> Podemos especificar una fracción constante (ej. <code>f_air = 0.42</code>).</li>
+                    <li><strong>Optimizable:</strong> Definimos un rango de búsqueda (ej. <code>f_bounds = (0.3, 0.7)</code>). En este caso, se añade una variable extra al optimizador para encontrar la fracción volumétrica óptima de forma dinámica.</li>
+                </ul>
+            </li>
+        </ul>
+    </section>
+
+    <!-- Sección 5 -->
+    <section>
+        <h2>5. Función de Pérdida y Bucle de Optimización</h2>
+        <p>El bucle optimiza de forma conjunta todos los espesores y coeficientes de dispersión calculando el error entre el modelo teórico y el experimental.</p>
+        <ol>
+            <li><strong>Reconstrucción:</strong> En cada época, los logits de espesores ($d_{\text{opt}}$) y parámetros ópticos ($p_{\text{opt}}$) se transforman a sus dimensiones físicas correspondientes ($d_{\text{fisico}}$, $n_{\text{complex}}$) usando la sigmoide.</li>
+            <li><strong>Simulación Óptica:</strong> Ejecuta la formulación de matriz de transferencia coherente de forma batcheada para todas las semillas y longitudes de onda en paralelo para obtener $r_s$ y $r_p$.</li>
+            <li><strong>Simulación de Parámetros Teóricos:</strong>
+                $$\rho = \frac{r_p}{r_s} \implies \psi_{\text{teo}} = \arctan(|\rho|), \quad \Delta_{\text{teo}} = \text{angle}(\rho)$$
+                $$I_{s,\text{teo}} = \sin(2\psi_{\text{teo}}) \sin(\Delta_{\text{teo}})$$
+                $$I_{c,\text{teo}} = \sin(2\psi_{\text{teo}}) \cos(\Delta_{\text{teo}})$$
+            </li>
+            <li><strong>Cálculo de Pérdida (Loss MSE):</strong>
+                <p>Calculamos el Error Cuadrático Medio por cada semilla $j$:</p>
+                $$\text{Loss}_j = \frac{1}{N} \sum_{\lambda} \left[ (I_{s,\text{teo}}^{(j)}(\lambda) - I_{s,\text{exp}}(\lambda))^2 + (I_{c,\text{teo}}^{(j)}(\lambda) - I_{c,\text{exp}}(\lambda))^2 \right]$$
+                <p>Para optimizar de forma eficiente con Autograd, sumamos las pérdidas de todas las semillas y ejecutamos <code>loss.backward()</code>.</p>
+            </li>
+            <li><strong>Extracción del Mínimo Global:</strong>
+                <p>Al finalizar las épocas, seleccionamos la semilla que logró el menor error final utilizando <code>loss_final.argmin()</code>. Sus parámetros óptimos son retornados como el ajuste definitivo.</p>
+            </li>
+        </ol>
+    </section>
+
+    <!-- Sección 6 -->
+    <section>
+        <h2>6. Ejemplos de Configuración de la API</h2>
+        <p>A continuación se muestra un ejemplo práctico de cómo configurar la API mejorada:</p>
+        
+        <h3>Ejemplo: Capa de TiO2 rugosa/porosa con Bruggeman y Cauchy Absorbente</h3>
+        <p>Queremos ajustar un stack sobre Silicio, donde la capa densa de $\text{TiO}_2$ es paramétrica (Cauchy con absorción y límites personalizados) y la capa superior es porosa (Bruggeman optimizando la fracción de aire):</p>
+
+        <pre><code class="language-python">from fit_elipsometrico import ajuste_elipsometrico
+
+# Nombre de la capa paramétrica puede ser cualquier etiqueta dummy
+layer_names = ['air', 'T1_porosa', 'T1_densa', 'Si']
+
+# Configuración avanzada de modelos
+layer_models = [
+    None,  # air
+    {
+        'model': 'bruggeman',
+        'f_bounds': (0.1, 0.6)  # Optimizar fracción de aire entre 10% y 60%
+    },
+    {
+        'model': 'cauchy_absorbent',
+        # Definimos bounds personalizados para A, B, C, D, E, F:
+        'bounds': [
+            (2.0, 2.7),   # A (n base alto para TiO2)
+            (0.0, 1.5),   # B
+            (-0.5, 0.5),  # C
+            (0.0, 0.1),   # D (absorción k base baja)
+            (0.0, 0.5),   # E
+            (-0.1, 0.1)   # F
+        ]
+    },
+    None  # Sustrato estático Si
+]
+
+# Límites de espesores para capas intermedias (T1_porosa y T1_densa)
+d_bounds = [(1.0, 40.0), (20.0, 120.0)]
+
+best_thick, best_Is, best_Ic, best_params, wl = ajuste_elipsometrico(
+    data_path='./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt',
+    skiprows=5,
+    layer_names=layer_names,
+    layer_models=layer_models,
+    d_bounds=d_bounds,
+    theta_0=69.5,
+    num_starts=300,
+    num_epochs=400,
+    use_cuda=True,
+    cache_path='./cache'  # Se guardará el hash del ajuste para carga instantánea posterior
+)</code></pre>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 TMM-R Ellipsometry API. Generado con KaTeX & PrismJS.</p>
+    </footer>
+</div>
+
+<!-- PrismJS Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+
+</body>
+</html>
