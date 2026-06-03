@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guía Didáctica: fit_ellipsometry_torch</title>
+    <title>Explicación Línea por Línea: fit_ellipsometry_torch</title>
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- KaTeX para renderizar ecuaciones matemáticas en cualquier dispositivo -->
+    <!-- KaTeX para renderizar expresiones matemáticas -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
@@ -26,10 +26,10 @@
             --heading-color: #f1f5f9;
             --primary-color: #a78bfa;
             --primary-gradient: linear-gradient(135deg, #a78bfa, #7c3aed);
-            --secondary-gradient: linear-gradient(135deg, #60a5fa, #2563eb);
             --card-bg: #131b2e;
             --border-color: #1e293b;
             --code-bg: #070a13;
+            --accent-green: #34d399;
         }
 
         * {
@@ -47,21 +47,20 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
         }
 
-        /* Encabezado Principal */
         header {
             text-align: center;
-            margin-bottom: 4rem;
+            margin-bottom: 3rem;
             padding-bottom: 2rem;
             border-bottom: 1px solid var(--border-color);
         }
 
         h1 {
             font-family: 'Outfit', sans-serif;
-            font-size: 2.8rem;
+            font-size: 2.5rem;
             font-weight: 800;
             background: var(--primary-gradient);
             -webkit-background-clip: text;
@@ -71,148 +70,128 @@
         }
 
         header p {
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             color: #64748b;
-            max-width: 700px;
-            margin: 0 auto;
         }
 
-        /* Secciones */
-        section {
+        /* Bloque Explicativo */
+        .code-block-explanation {
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: 16px;
-            padding: 2.5rem;
-            margin-bottom: 2.5rem;
+            padding: 2rem;
+            margin-bottom: 3rem;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        section:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
         }
 
         h2 {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             font-weight: 700;
             color: var(--heading-color);
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.25rem;
             border-left: 4px solid var(--primary-color);
             padding-left: 0.75rem;
         }
 
         h3 {
             font-family: 'Outfit', sans-serif;
-            font-size: 1.3rem;
+            font-size: 1.25rem;
             font-weight: 600;
             color: var(--text-light);
-            margin: 1.5rem 0 1rem 0;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
         }
 
         p {
-            margin-bottom: 1.25rem;
-            font-size: 1.05rem;
-        }
-
-        ul {
-            margin-bottom: 1.25rem;
-            padding-left: 1.5rem;
-        }
-
-        li {
-            margin-bottom: 0.5rem;
+            margin-bottom: 1rem;
             font-size: 1.025rem;
         }
 
-        strong {
-            color: var(--text-light);
-            font-weight: 600;
+        /* Lista de explicaciones */
+        .explanation-list {
+            list-style: none;
+            margin: 1.5rem 0;
         }
 
-        /* Fórmulas matemáticas */
-        .katex-display {
-            padding: 1rem 0;
-            overflow-x: auto;
-            overflow-y: hidden;
+        .explanation-list li {
+            position: relative;
+            padding-left: 1.75rem;
+            margin-bottom: 1.25rem;
+            font-size: 1rem;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+        }
+
+        .explanation-list li:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .explanation-list li::before {
+            content: "•";
+            position: absolute;
+            left: 0.5rem;
+            top: 0;
+            color: var(--primary-color);
+            font-size: 1.5rem;
+            line-height: 1.2;
+        }
+
+        .line-ref {
+            display: inline-block;
             background-color: var(--code-bg);
-            border-radius: 8px;
-            margin: 1rem 0;
-            border: 1px dashed rgba(167, 139, 250, 0.2);
+            color: var(--accent-green);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-right: 0.5rem;
+            border: 1px solid var(--border-color);
         }
 
-        /* Bloques de Código */
         pre {
-            margin: 1.5rem 0 !important;
+            margin: 1.25rem 0 !important;
             border-radius: 12px !important;
             border: 1px solid var(--border-color) !important;
-            box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
             background: var(--code-bg) !important;
         }
 
         code {
-            font-family: 'Consolas', 'Courier New', Courier, monospace !important;
-            font-size: 0.95rem !important;
+            font-family: 'Consolas', monospace !important;
+            font-size: 0.925rem !important;
         }
 
         :not(pre) > code {
             background-color: var(--code-bg);
             color: var(--primary-color);
-            padding: 0.2rem 0.4rem;
+            padding: 0.15rem 0.35rem;
             border-radius: 4px;
-            font-size: 0.9rem !important;
-            border: 1px solid var(--border-color);
+            font-size: 0.875rem !important;
         }
 
-        /* Diagramas en ASCII / Contenedores */
-        .diagram {
-            font-family: 'Consolas', monospace;
-            white-space: pre;
-            background-color: var(--code-bg);
-            color: #38bdf8;
-            padding: 1.25rem;
-            border-radius: 8px;
-            margin: 1.5rem 0;
-            overflow-x: auto;
-            font-size: 0.85rem;
-            border: 1px solid var(--border-color);
-        }
-
-        hr {
-            border: 0;
-            height: 1px;
-            background: var(--border-color);
-            margin: 2rem 0;
-        }
-
-        /* Footer */
         footer {
             text-align: center;
             padding: 2rem 0;
             color: #64748b;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             border-top: 1px solid var(--border-color);
             margin-top: 4rem;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
             body {
                 padding: 1rem 0.5rem;
             }
-
-            section {
-                padding: 1.5rem 1rem;
-                border-radius: 12px;
+            .code-block-explanation {
+                padding: 1.25rem 1rem;
             }
-
             h1 {
-                font-size: 2rem;
+                font-size: 1.8rem;
             }
-
             h2 {
-                font-size: 1.5rem;
+                font-size: 1.35rem;
             }
         }
     </style>
@@ -221,233 +200,510 @@
 
 <div class="container">
     <header>
-        <h1>Guía de Funcionamiento</h1>
-        <p>Análisis detallado de la física, lógica y optimización con PyTorch Autograd en la función <code>fit_ellipsometry_torch</code>.</p>
+        <h1>Explicación Línea por Línea</h1>
+        <p>Análisis exhaustivo del código de la función <code>fit_ellipsometry_torch</code> dentro de <code>tmm_utils_Rodrigo.py</code>.</p>
     </header>
 
-    <!-- Sección 1 -->
-    <section>
-        <h2>1. Fundamentos Físicos de la Elipsometría</h2>
-        <p>La elipsometría es una técnica de caracterización óptica no destructiva que mide el cambio en el estado de polarización de la luz al reflejarse en una muestra.</p>
+    <!-- BLOQUE 1: FIRMA Y PREPARACIÓN DE TENSORES -->
+    <div class="code-block-explanation">
+        <h2>1. Firma de la Función y Preparación de Tensores</h2>
+        <p>Esta sección define qué parámetros recibe el algoritmo y cómo los adecúa para trabajar en PyTorch (ya sea en CPU o GPU).</p>
         
-        <h3>El Parámetro Fundamental $\rho$</h3>
-        <p>Cuando la luz incide sobre una muestra con un ángulo $\theta_0$, los coeficientes de reflexión compleja para las polarizaciones transversal eléctrica ($s$) y transversal magnética ($p$) son $r_s$ y $r_p$, respectivamente. La elipsometría mide la relación entre estos coeficientes:</p>
+        <pre><code class="language-python">def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0, 
+                           num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
+                           layer_models=None, layer_names=None):
+    device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
+    print(f"Ejecutando en dispositivo: {device}")
+    
+    lams = lams.to(device)
+    
+    if not isinstance(Is_exp, torch.Tensor):
+        Is_exp = torch.tensor(Is_exp, dtype=torch.float64, device=device)
+    else:
+        Is_exp = Is_exp.to(device)
         
-        $$\rho = \frac{r_p}{r_s} = \tan(\psi) e^{i \Delta}$$
-        
-        <p>Donde:</p>
-        <ul>
-            <li><strong>$\psi$ (Psi)</strong> representa la relación de amplitudes entre las reflexiones de las ondas $p$ y $s$ ($\tan\psi = |r_p| / |r_s|$). Su rango físico es $[0, \pi/2]$ (o $[0^\circ, 90^\circ]$).</li>
-            <li><strong>$\Delta$ (Delta)</strong> representa la diferencia de fase introducida por la reflexión entre ambas componentes ($\Delta = \delta_p - \delta_s$). Su rango físico es $[-\pi, \pi]$ (o $[-180^\circ, 180^\circ]$).</li>
+    if not isinstance(Ic_exp, torch.Tensor):
+        Ic_exp = torch.tensor(Ic_exp, dtype=torch.float64, device=device)
+    else:
+        Ic_exp = Ic_exp.to(device)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 558-560</span><code>def fit_ellipsometry_torch(...)</code>: Define la firma. Recibe la lista de índices ópticos (<code>n_list</code>), límites de espesores (<code>d_bounds</code>), longitudes de onda (<code>lams</code>), parámetros elipsométricos medidos (<code>Is_exp</code>, <code>Ic_exp</code>), el ángulo de incidencia (<code>th_0</code>) y configuraciones de optimización.</li>
+            <li><span class="line-ref">Línea 583</span><code>device = torch.device(...)</code>: Configura el dispositivo. Si <code>use_cuda=True</code> y tienes drivers/GPU de NVIDIA disponibles, usará la GPU para procesar las semillas en paralelo. De lo contrario, usará la CPU.</li>
+            <li><span class="line-ref">Línea 587</span><code>lams = lams.to(device)</code>: Mueve el tensor de longitudes de onda al dispositivo seleccionado.</li>
+            <li><span class="line-ref">Línea 589-598</span><code>if not isinstance(Is_exp, torch.Tensor)...</code>: Verifica si los datos experimentales de $I_s$ e $I_c$ son arreglos de numpy o tensores. Si son numpy, los convierte a tensores de PyTorch de doble precisión (<code>float64</code>) y los carga en el dispositivo. Si ya son tensores, simplemente se asegura de moverlos al dispositivo actual.</li>
         </ul>
+    </div>
 
-        <h3>Parámetros Elipsométricos Medidos: $I_s$ e $I_c$</h3>
-        <p>En la práctica, muchos elipsómetros modernos (especialmente los de modulador de fase o analizador rotatorio) no miden $\psi$ y $\Delta$ directamente. En su lugar, miden tres intensidades normalizadas conocidas como los parámetros de Stokes o coeficientes elipsométricos. Dos de los más comunes son:</p>
+    <!-- BLOQUE 2: PROCESAMIENTO DE n_list -->
+    <div class="code-block-explanation">
+        <h2>2. Procesamiento de n_list y Dummies Paramétricos</h2>
+        <p>Aquí se procesan los índices de refracción iniciales. Si hay capas cuyo índice se optimiza dinámicamente, se crea un tensor dummy (de unos) para rellenar la estructura temporalmente.</p>
+
+        <pre><code class="language-python">    if isinstance(n_list, torch.Tensor):
+        n_list = n_list.to(device)
+        num_layers = n_list.shape[0]
+        num_wl = n_list.shape[1]
+    else:
+        n_list_tensors = []
+        for item in n_list:
+            if isinstance(item, torch.Tensor):
+                n_list_tensors.append(item.to(device))
+            else:
+                n_list_tensors.append(torch.ones_like(lams, dtype=torch.complex128, device=device))
+        n_list = torch.stack(n_list_tensors, dim=0)
+        num_layers = n_list.shape[0]
+        num_wl = n_list.shape[1]
         
-        $$I_s = \sin(2\psi) \sin(\Delta)$$
-        $$I_c = \sin(2\psi) \cos(\Delta)$$
+    num_finite_layers = num_layers - 2
+    
+    if len(d_bounds) != num_finite_layers:
+        raise ValueError(f"d_bounds debe tener longitud {num_finite_layers}, pero tiene {len(d_bounds)}.")</pre></code>
 
-        <p><strong>¿Por qué el código ajusta $I_s$ e $I_c$ en lugar de $\psi$ y $\Delta$?</strong></p>
-        <ul>
-            <li><strong>Discontinuidades de Fase:</strong> El ángulo $\Delta$ tiene una discontinuidad de salto de fase natural en $-\pi$ y $\pi$ (o $-180^\circ$ y $180^\circ$). Si el optimizador intenta ajustar $\Delta$ directamente cerca de estos bordes, los gradientes se vuelven inestables o erróneos debido al salto abrupto. Al usar $\sin(\Delta)$ y $\cos(\Delta)$, la fase se comporta como funciones continuas y suaves sin saltos bruscos.</li>
-            <li><strong>Tratamiento de Singularidades:</strong> Cuando $\psi \approx 0$ (poca reflectancia en la componente $p$), la fase $\Delta$ se vuelve indeterminada y extremadamente ruidosa. Multiplicar por $\sin(2\psi)$ atenúa naturalmente el impacto del ruido de $\Delta$ en estas zonas.</li>
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 600-603</span><code>if isinstance(n_list, torch.Tensor)</code>: Si <code>n_list</code> ya es un único tensor 2D de dimensiones <code>[num_capas, num_wavelengths]</code>, se mueve al dispositivo directamente y se obtienen las dimensiones del sistema.</li>
+            <li><span class="line-ref">Línea 604-613</span><code>else: ...</code>: Si es una lista de materiales (lo normal al usar capas paramétricas), se recorre elemento por elemento. Si es un material estático (cuyo índice ya es un tensor), se mueve a la GPU. Si es una capa paramétrica (como Cauchy, que viene representada por un dummy), se crea un tensor de números complejos de $1.0 + 0j$ (un "aire ficticio") de la misma longitud que <code>lams</code>. Luego, <code>torch.stack</code> los apila a todos para formar un único tensor consolidado.</li>
+            <li><span class="line-ref">Línea 617</span><code>num_finite_layers = num_layers - 2</code>: Calcula el número de capas intermedias con espesor finito. Restamos 2 porque el superestrato (aire, capa 0) y el sustrato (capa última) son ópticamente infinitos y no tienen espesores a ajustar.</li>
+            <li><span class="line-ref">Línea 619-620</span><code>if len(d_bounds) != num_finite_layers</code>: Validación. Verifica que el usuario haya especificado límites de espesor exactamente para las capas intermedias finitas.</li>
         </ul>
+    </div>
 
-        <h3>¿Por qué la incidencia normal no funciona?</h3>
-        <p>En incidencia normal ($\theta_0 = 0^\circ$), las polarizaciones $s$ y $p$ son físicamente equivalentes y degeneradas. Por convención geométrica, $r_p = -r_s$. Esto implica que:</p>
-        
-        $$\rho = \frac{r_p}{r_s} = -1 \implies \tan(\psi) = 1 \implies \psi = 45^\circ$$
-        $$\Delta = 180^\circ \text{ (o } \pi \text{ rad)}$$
-        
-        <p>Bajo estas condiciones:</p>
-        <ul>
-            <li>$I_s = \sin(90^\circ) \sin(180^\circ) = 0$</li>
-            <li>$I_c = \sin(90^\circ) \cos(180^\circ) = -1$</li>
+    <!-- BLOQUE 3: ESTRATIFICACIÓN Y PARSEO DE MODELOS DE DISPERSIÓN -->
+    <div class="code-block-explanation">
+        <h2>3. Parseo de Modelos de Dispersión Paramétricos</h2>
+        <p>Esta sección analiza qué modelos matemáticos (Cauchy, Cauchy Absorbente, Bruggeman) se asignan a cada capa y define los límites ópticos de búsqueda.</p>
+
+        <pre><code class="language-python">    is_parametric = False
+    disp_layers = []
+    total_disp_params = 0
+    
+    if layer_models is not None:
+        for idx, model in enumerate(layer_models):
+            if model is not None:
+                is_parametric = True
+                
+                if isinstance(model, dict):
+                    model_type = model.get('model', 'cauchy')
+                    bounds = model.get('bounds', None)
+                    initial = model.get('initial', None)
+                else:
+                    model_type = model
+                    bounds = None
+                    initial = None</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 623-625</span><code>is_parametric = False...</code>: Inicializa banderas y variables para rastrear si el ajuste incluye optimización de índices de refracción (<code>is_parametric</code>), información detallada de cada modelo (<code>disp_layers</code>) y el número total de variables del índice a optimizar (<code>total_disp_params</code>).</li>
+            <li><span class="line-ref">Línea 627-629</span><code>if layer_models is not None...</code>: Comienza a iterar sobre la configuración de modelos de cada capa. Si la capa actual tiene un modelo (no es <code>None</code>), activa la bandera paramétrica.</li>
+            <li><span class="line-ref">Línea 632-640</span><code>if isinstance(model, dict)...</code>: Permite flexibilizar la entrada. Si el modelo viene como un diccionario (ej: para especificar límites personalizados), extrae el nombre del modelo, límites (<code>bounds</code>) e inicialización (<code>initial</code>). Si viene simplemente como una cadena de texto (ej: <code>'cauchy'</code>), define límites por defecto.</li>
         </ul>
-        <p>Dado que $I_s = 0$ e $I_c = -1$ para cualquier material y espesor a $0^\circ$, <strong>es imposible realizar elipsometría a incidencia normal</strong>. Por eso elipsómetros reales operan a ángulos oblicuos (típicamente entre $55^\circ$ y $75^\circ$), cerca del ángulo de Brewster del sustrato, donde la sensibilidad a los espesores y capas delgadas es máxima.</p>
-    </section>
+    </div>
 
-    <!-- Sección 2 -->
-    <section>
-        <h2>2. Optimización Paralela y Multi-Start con PyTorch</h2>
-        <p>Ajustar espesores y propiedades de refracción a partir de curvas elipsométricas es un problema altamente <strong>no lineal</strong> y con abundantes <strong>mínimos locales</strong> (debido al comportamiento oscilatorio de la interferencia óptica).</p>
-        
-        <h3>El Enfoque Tradicional vs. Enfoque PyTorch</h3>
-        <ul>
-            <li><strong>Enfoque tradicional:</strong> Algoritmos como Levenberg-Marquardt (usado en <code>scipy.optimize.curve_fit</code>) o L-BFGS-B calculan derivadas numéricas aproximadas por diferencias finitas. Si se inician desde una única semilla, quedan atrapados casi de inmediato en el mínimo local más cercano. Correr muchas semillas de manera secuencial es sumamente lento.</li>
-            <li><strong>Enfoque PyTorch:</strong>
-                <ol>
-                    <li><strong>Gradientes exactos (Autograd):</strong> PyTorch calcula los gradientes analíticos exactos de la función de pérdida con respecto a todos los parámetros optimizables mediante diferenciación automática. Esto acelera drásticamente la convergencia de optimizadores basados en gradiente como <strong>Adam</strong>.</li>
-                    <li><strong>Multi-start masivo en GPU:</strong> En lugar de ejecutar una sola optimización, representamos los parámetros como tensores de dimensión <code>[num_starts, num_parametros]</code>. PyTorch procesa de forma vectorial y paralela todas las semillas (ej. 1000 ejecuciones simultáneas) aprovechando al máximo los núcleos paralelos de la GPU o la CPU.</li>
-                </ol>
-            </li>
+    <!-- BLOQUE 4: PARSEO DETALLADO POR MODELO -->
+    <div class="code-block-explanation">
+        <h2>4. Inicialización de Rangos por Modelo</h2>
+        <p>Línea por línea se leen los parámetros correspondientes para cada uno de los modelos físicos implementados.</p>
+
+        <pre><code class="language-python">                if model_type == 'cauchy':
+                    num_p = 3
+                    default_bounds = [(1.0, 3.0), (-1.0, 1.0), (-1.0, 1.0)]
+                    default_initial = [1.5, 0.0, 0.0]
+                elif model_type == 'cauchy_absorbent':
+                    num_p = 6
+                    default_bounds = [(1.0, 3.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0)]
+                    default_initial = [1.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+                elif model_type == 'bruggeman':
+                    if isinstance(model, dict):
+                        f_air_fixed = model.get('f_air', None)
+                        f_bounds = model.get('f_bounds', None)
+                    else:
+                        f_air_fixed = None
+                        f_bounds = None
+                    
+                    if f_bounds is not None:
+                        num_p = 1
+                        default_bounds = [tuple(f_bounds)]
+                        default_initial = [sum(f_bounds) / 2.0]
+                    else:
+                        num_p = 0
+                        default_bounds = []
+                        default_initial = []</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 642-646</span><code>if model_type == 'cauchy'</code>: Configura el modelo Cauchy clásico transparente. Requiere $3$ parámetros ($A, B, C$). Sus límites predeterminados de búsqueda son: $A \in [1.0, 3.0]$ (índice base), $B \in [-1.0, 1.0]$ y $C \in [-1.0, 1.0]$. Su semilla inicial típica es $A=1.5, B=0.0, C=0.0$.</li>
+            <li><span class="line-ref">Línea 647-651</span><code>elif model_type == 'cauchy_absorbent'</code>: Configura el modelo Cauchy con absorción. Agrega $3$ parámetros más para representar la parte imaginaria $k(\lambda)$ (coeficientes $D, E, F$). Total: $6$ parámetros.</li>
+            <li><span class="line-ref">Línea 652-660</span><code>elif model_type == 'bruggeman'</code>: Modelo de Bruggeman. Si es un diccionario, verifica si el usuario quiere optimizar la fracción de aire (se busca <code>f_bounds</code>) o dejarla fija en un valor constante (se busca <code>f_air</code>).</li>
+            <li><span class="line-ref">Línea 661-670</span><code>if f_bounds is not None</code>: Si hay <code>f_bounds</code> (fracción de aire optimizable), el modelo agrega $1$ parámetro de búsqueda, con límites dados por <code>f_bounds</code>, inicializándolo en el punto medio. Si es fija, agrega $0$ parámetros a optimizar.</li>
         </ul>
-    </section>
+    </div>
 
-    <!-- Sección 3 -->
-    <section>
-        <h2>3. El Truco del Sigmoide (Sigmoid Trick)</h2>
-        <p>Los espesores y los parámetros ópticos de Cauchy tienen restricciones físicas estrictas (límites o <em>bounds</em>), por ejemplo, un espesor $d$ no puede ser menor a $0$ ni mayor a $150\text{ nm}$.</p>
-        <p>Optimizadores clásicos de PyTorch como <code>Adam</code> o <code>SGD</code> no soportan límites directamente; asumen que los parámetros pueden tomar cualquier valor real entre $-\infty$ y $\infty$. Si un espesor se volviera negativo en un paso de optimización, la simulación física colapsaría.</p>
-        
-        <h3>Mapeo Matemático con Sigmoide</h3>
-        <p>Para solucionar esto sin añadir pesadas restricciones matemáticas, aplicamos una transformación que mapea el espacio ilimitado del optimizador al espacio físico acotado de la simulación.</p>
-        <p>Sea un parámetro físico $p_{\text{phys}}$ acotado en el intervalo $[p_{\text{min}}, p_{\text{max}}]$. Definimos una variable interna llamada <strong>logit</strong> ($p_{\text{logit}}$) que puede tomar cualquier valor real en $(-\infty, \infty)$. La relación viene dada por la función sigmoide ($\sigma$):</p>
-        
-        $$p_{\text{phys}} = p_{\text{min}} + (p_{\text{max}} - p_{\text{min}}) \cdot \sigma(p_{\text{logit}})$$
-        
-        <p>Donde la función sigmoide se define como:</p>
-        $$\sigma(x) = \frac{1}{1 + e^{-x}}$$
+    <!-- BLOQUE 5: CONSOLIDACIÓN DE CAPAS PARAMÉTRICAS -->
+    <div class="code-block-explanation">
+        <h2>5. Consolidación de Información de Dispersión</h2>
+        <p>Se asocian los límites finales y se crea un registro estructurado con la posición de cada variable en el vector general.</p>
 
-        <div class="diagram">
-  p_logit (Espacio del Optimizador)       p_phys (Espacio Físico de Simulación)
-         (-inf, +inf)                        [p_min, p_max]
-              │                                    │
-              ▼                                    ▼
-       ┌─────────────┐       ┌──────────────────────────────────────────────┐
-       │   Optim.    │ ───>  │ p_phys = p_min + (p_max-p_min) * sigmoide(x) │
-       └─────────────┘       └──────────────────────────────────────────────┘</div>
-        
-        <ul>
-            <li>Si $p_{\text{logit}} \to -\infty$, $\sigma(p_{\text{logit}}) \to 0 \implies p_{\text{phys}} \to p_{\text{min}}$.</li>
-            <li>Si $p_{\text{logit}} \to \infty$, $\sigma(p_{\text{logit}}) \to 1 \implies p_{\text{phys}} \to p_{\text{max}}$.</li>
-            <li>Si $p_{\text{logit}} = 0$, $\sigma(p_{\text{logit}}) = 0.5 \implies p_{\text{phys}}$ está exactamente en el centro del intervalo.</li>
+        <pre><code class="language-python">                if bounds is None:
+                    bounds = default_bounds
+                if initial is None:
+                    initial = default_initial
+                    
+                layer_info = {
+                    'layer_idx': idx,
+                    'model_type': model_type,
+                    'param_bounds': bounds,
+                    'param_initial': initial,
+                    'num_params': num_p,
+                    'start_idx': total_disp_params
+                }
+                if model_type == 'bruggeman':
+                    if isinstance(model, dict) and 'f_bounds' in model:
+                        layer_info['f_optimizable'] = True
+                    elif isinstance(model, dict) and 'f_air' in model:
+                        layer_info['f_air'] = model['f_air']
+                        layer_info['f_optimizable'] = False
+                    else:
+                        layer_info['f_air'] = 0.5
+                        layer_info['f_optimizable'] = False
+                
+                disp_layers.append(layer_info)
+                total_disp_params += num_p</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 674-677</span><code>if bounds/initial is None</code>: Si el usuario no especificó límites o valores iniciales personalizados, se adoptan los valores por defecto del modelo.</li>
+            <li><span class="line-ref">Línea 679-686</span><code>layer_info = {...}</code>: Crea un diccionario con los metadatos de la capa. Incluye el índice físico de la capa (<code>layer_idx</code>), modelo, límites, semillas y el índice de inicio en el vector global de optimización (<code>start_idx</code>) para saber dónde empiezan sus variables correspondientes.</li>
+            <li><span class="line-ref">Línea 688-696</span><code>if model_type == 'bruggeman'</code>: Define si la fracción de aire de la aproximación de medio efectivo es fija o variable, guardando su valor fijo (por defecto $0.5$) en caso de que no sea optimizable.</li>
+            <li><span class="line-ref">Línea 698-699</span><code>disp_layers.append...</code>: Guarda la información en la lista y acumula el total de variables ópticas optimizables (<code>total_disp_params</code>).</li>
         </ul>
+    </div>
 
-        <h3>Clampeo de Logits</h3>
-        <p>Cuando el optimizador aleja mucho una variable de su óptimo, el logit puede crecer demasiado (ej. $+10$). En estos extremos lejanos de la sigmoide, su derivada $\sigma'(x) = \sigma(x)(1 - \sigma(x))$ tiende exponencialmente a cero. Esto se conoce como <strong>saturación de gradiente</strong> (o <em>vanishing gradient</em>), y hace que el optimizador se "congele" y deje de actualizar esa variable.</p>
-        <p>Para evitarlo, el código realiza un clampeo preventivo en cada época:</p>
-        <pre><code class="language-python">with torch.no_grad():
-    d_opt.data.clamp_(-5, 5)
-    if is_parametric:
-        p_opt.data.clamp_(-5, 5)</code></pre>
-        <p>Dado que $\sigma(-5) \approx 0.0067$ y $\sigma(5) \approx 0.9933$, limitar los logits a $[-5, 5]$ permite explorar el $98.6\%$ del rango físico disponible manteniendo siempre gradientes con magnitudes saludables para seguir optimizando.</p>
-    </section>
+    <!-- BLOQUE 6: PARSEO DE ESPESORES -->
+    <div class="code-block-explanation">
+        <h2>6. Clasificación de Espesores Ópticos (Fijos y Optimizables)</h2>
+        <p>El código analiza los límites de espesores proporcionados por el usuario para separar qué capas se mantendrán fijas y cuáles se ajustarán.</p>
 
-    <!-- Sección 4 -->
-    <section>
-        <h2>4. Modelos de Dispersión Paramétricos</h2>
-        <p>Las capas reales cambian su índice de refracción $n$ y coeficiente de extinción $k$ según la longitud de onda $\lambda$. En lugar de optimizar un valor de $n$ independiente para cada longitud de onda (lo cual crearía cientos de variables redundantes y sobreajuste), representamos el comportamiento cromático mediante ecuaciones físicas parametrizadas.</p>
-        
-        <h3>A. Modelo de Cauchy Transparente</h3>
-        <p>Es excelente para dieléctricos de banda ancha (como $\text{SiO}_2$ o $\text{Al}_2\text{O}_3$) en el espectro visible e infrarrojo cercano, donde la absorción es nula ($k=0$):</p>
-        
-        $$n(\lambda) = A + \frac{B}{\lambda^2} + \frac{C}{\lambda^4}$$
-        
-        <p>Donde:</p>
-        <ul>
-            <li>$\lambda$ se expresa típicamente en micrómetros ($\mu\text{m}$) o nanómetros escalados para evitar problemas numéricos. En nuestro código de PyTorch, las longitudes de onda están escaladas para mantener estabilidad numérica:
-                <pre><code class="language-python">inv_lam2 = 1e4 / (lams_2d ** 2)  # Escala lambda en nm a micras de forma implícita
-inv_lam4 = 1e9 / (lams_2d ** 4)</code></pre>
-            </li>
-            <li><strong>Parámetros a optimizar:</strong> $A$ (índice base), $B$ (dispersión de primer orden), $C$ (dispersión de segundo orden).</li>
+        <pre><code class="language-python">    is_optimizable = []
+    opt_bounds = []
+    fixed_values = {}
+    
+    for idx, b in enumerate(d_bounds):
+        if isinstance(b, (tuple, list)):
+            d_min, d_max = float(b[0]), float(b[1])
+            if d_min == d_max:
+                is_optimizable.append(False)
+                fixed_values[idx] = d_min
+            else:
+                is_optimizable.append(True)
+                opt_bounds.append((d_min, d_max))
+        else:
+            is_optimizable.append(False)
+            fixed_values[idx] = float(b)
+            
+    num_opt_layers = sum(is_optimizable)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 705-707</span><code>is_optimizable = []...</code>: Prepara listas para marcar si la capa es variable (<code>is_optimizable</code>), sus límites físicos de espesor (<code>opt_bounds</code>) y un diccionario para guardar los valores estáticos (<code>fixed_values</code>).</li>
+            <li><span class="line-ref">Línea 709-720</span><code>for idx, b in enumerate(d_bounds)</code>: Itera sobre los límites de las capas finitas. Si el límite es un par `[d_min, d_max]` y ambos números son diferentes, se marca como optimizable y se guardan sus límites. Si son iguales (ej: <code>(50, 50)</code>) o el usuario ingresó un único número decimal (ej: <code>50.0</code>), se marca como no-optimizable (fijo) y se registra su espesor constante.</li>
+            <li><span class="line-ref">Línea 722</span><code>num_opt_layers = sum(is_optimizable)</code>: Suma las banderas `True` para saber exactamente cuántos espesores serán optimizados por el algoritmo.</li>
         </ul>
+    </div>
 
-        <h3>B. Modelo de Cauchy Absorbente</h3>
-        <p>Útil para materiales con una absorción débil o moderada en el espectro ultravioleta/azul (como algunos óxidos metálicos como $\text{TiO}_2$). Modelamos la parte compleja del índice de refracción $\tilde{n} = n + i k$ con coeficientes independientes para la absorción:</p>
-        
-        $$n(\lambda) = A + \frac{B}{\lambda^2} + \frac{C}{\lambda^4}$$
-        $$k(\lambda) = D + \frac{E}{\lambda^2} + \frac{F}{\lambda^4}$$
-        
-        <ul>
-            <li><strong>Parámetros a optimizar:</strong> 6 parámetros en total ($A, B, C$ para $n$ y $D, E, F$ para $k$). El código asegura que $k$ no tome valores físicos negativos aplicando:
-                <pre><code class="language-python">k_calc = torch.clamp(k_calc, min=0.0)</code></pre>
-            </li>
+    <!-- BLOQUE 7: INICIALIZACIÓN MULTI-START DE ESPESORES EN LOGITS -->
+    <div class="code-block-explanation">
+        <h2>7. Inicialización Multi-Start de Espesores en Logits</h2>
+        <p>Se realiza la siembra aleatoria paralela en el espacio libre de restricciones (logits) mediante la transformada sigmoide inversa.</p>
+
+        <pre><code class="language-python">    d_initial = torch.zeros((num_starts, num_opt_layers), dtype=torch.float64, device=device)
+    o_idx = 0
+    for idx, opt in enumerate(is_optimizable):
+        if opt:
+            d_min, d_max = opt_bounds[o_idx]
+            d_init_phys = torch.empty(num_starts, device=device).uniform_(d_min, d_max)
+            p = (d_init_phys - d_min) / (d_max - d_min)
+            p = torch.clamp(p, 1e-7, 1.0 - 1e-7)
+            d_initial[:, o_idx] = torch.log(p / (1.0 - p))
+            o_idx += 1
+            
+    d_opt = d_initial.clone().detach().requires_grad_(True)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 726</span><code>d_initial = torch.zeros((num_starts...))</code>: Prepara una matriz en el dispositivo con dimensiones <code>[semillas, espesores_optimizables]</code> llena de ceros.</li>
+            <li><span class="line-ref">Línea 729-731</span><code>if opt: ...</code>: Para cada espesor optimizable, genera una distribución uniforme aleatoria de valores de espesor físico para todas las semillas, acotada en su intervalo <code>[d_min, d_max]</code>.</li>
+            <li><span class="line-ref">Línea 732</span><code>p = (d_init_phys - d_min) / (d_max - d_min)</code>: Normaliza los espesores aleatorios al rango $[0, 1]$.</li>
+            <li><span class="line-ref">Línea 733</span><code>p = torch.clamp(p, 1e-7, 1.0 - 1e-7)</code>: Limita el rango para evitar la división por cero o logaritmo de cero en el paso siguiente.</li>
+            <li><span class="line-ref">Línea 734</span><code>d_initial[:, o_idx] = torch.log(p / (1.0 - p))</code>: **Sigmoide inversa (Logit)**. Mapea el valor normalizado del rango $[0, 1]$ al rango ilimitado $(-\infty, \infty)$.</li>
+            <li><span class="line-ref">Línea 737</span><code>d_opt = d_initial.clone().detach().requires_grad_(True)</code>: Duplica los logits iniciales en un tensor dedicado a la optimización, y activa <code>requires_grad_(True)</code> para indicarle a Autograd de PyTorch que debe calcular gradientes matemáticos para estas variables.</li>
         </ul>
+    </div>
 
-        <h3>C. Modelo de Bruggeman (Effective Medium Approximation - EMA)</h3>
-        <p>Permite modelar una capa mezcla (por ejemplo, una capa porosa o rugosa) compuesta por dos fases: una matriz densa y aire/vacío ($n_{\text{air}} = 1.0$).</p>
-        <p>La relación matemática que define el índice complejo efectivo $n_{\text{eff}}$ de la mezcla viene dada por la ecuación cuadrática de Bruggeman:</p>
-        
-        $$f_{\text{air}} \frac{n_{\text{air}}^2 - n_{\text{eff}}^2}{n_{\text{air}}^2 + 2 n_{\text{eff}}^2} + (1 - f_{\text{air}}) \frac{n_{\text{base}}^2 - n_{\text{eff}}^2}{n_{\text{base}}^2 + 2 n_{\text{eff}}^2} = 0$$
-        
-        <p>Donde:</p>
-        <ul>
-            <li>$n_{\text{base}}$ es el índice complejo del material denso subyacente.</li>
-            <li>$f_{\text{air}}$ es la fracción volumétrica de aire (porosidad).</li>
-            <li><strong>Configuración en el código:</strong>
-                <ul>
-                    <li><strong>Fijo:</strong> Podemos especificar una fracción constante (ej. <code>f_air = 0.42</code>).</li>
-                    <li><strong>Optimizable:</strong> Definimos un rango de búsqueda (ej. <code>f_bounds = (0.3, 0.7)</code>). En este caso, se añade una variable extra al optimizador para encontrar la fracción volumétrica óptima de forma dinámica.</li>
-                </ul>
-            </li>
+    <!-- BLOQUE 8: INICIALIZACIÓN MULTI-START DE MODELOS DE DISPERSIÓN -->
+    <div class="code-block-explanation">
+        <h2>8. Inicialización Multi-Start de Parámetros Ópticos</h2>
+        <p>Se realiza el mismo procedimiento de distribución aleatoria para los coeficientes Cauchy y fracciones de Bruggeman.</p>
+
+        <pre><code class="language-python">    if is_parametric:
+        p_initial = torch.zeros((num_starts, total_disp_params), dtype=torch.float64, device=device)
+        for d_lay in disp_layers:
+            start_idx = d_lay['start_idx']
+            bounds = d_lay['param_bounds']
+            initial = d_lay['param_initial']
+            
+            for k in range(d_lay['num_params']):
+                p_min, p_max = float(bounds[k][0]), float(bounds[k][1])
+                p_init_phys = torch.empty(num_starts, device=device).uniform_(p_min, p_max)
+                p = (p_init_phys - p_min) / (p_max - p_min)
+                p = torch.clamp(p, 1e-7, 1.0 - 1e-7)
+                p_initial[:, start_idx + k] = torch.log(p / (1.0 - p))
+                
+        p_opt = p_initial.clone().detach().requires_grad_(True)
+        optimizer = optim.Adam([d_opt, p_opt], lr=lr)
+    else:
+        optimizer = optim.Adam([d_opt], lr=lr)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 740-741</span><code>if is_parametric: ...</code>: Si se ajustan índices complejos, prepara una matriz <code>p_initial</code> de tamaño <code>[semillas, parametros_opticos]</code>.</li>
+            <li><span class="line-ref">Línea 742-748</span><code>for d_lay in disp_layers: ...</code>: Recorre las capas con modelos y extrae la información de sus límites.</li>
+            <li><span class="line-ref">Línea 751-755</span><code>for k in range(d_lay['num_params'])</code>: Para cada parámetro del modelo (ej: A, B, C de Cauchy), siembra valores aleatorios uniformes dentro de sus límites físicos, los normaliza en $[0, 1]$, los limita con <code>clamp</code> y calcula su equivalente en logit usando la fórmula de logit.</li>
+            <li><span class="line-ref">Línea 757</span><code>p_opt = p_initial...requires_grad_(True)</code>: Convierte los logits de índices de refracción en tensores optimizables con gradiente activo.</li>
+            <li><span class="line-ref">Línea 758-760</span><code>optimizer = optim.Adam(...)</code>: Crea el optimizador Adam de PyTorch. Si el ajuste es paramétrico, optimizará tanto los espesores (<code>d_opt</code>) como los índices (<code>p_opt</code>) con la tasa de aprendizaje (<code>lr</code>) elegida. De lo contrario, solo optimiza los espesores.</li>
         </ul>
-    </section>
+    </div>
 
-    <!-- Sección 5 -->
-    <section>
-        <h2>5. Función de Pérdida y Bucle de Optimización</h2>
-        <p>El bucle optimiza de forma conjunta todos los espesores y coeficientes de dispersión calculando el error entre el modelo teórico y el experimental.</p>
-        <ol>
-            <li><strong>Reconstrucción:</strong> En cada época, los logits de espesores ($d_{\text{opt}}$) y parámetros ópticos ($p_{\text{opt}}$) se transforman a sus dimensiones físicas correspondientes ($d_{\text{fisico}}$, $n_{\text{complex}}$) usando la sigmoide.</li>
-            <li><strong>Simulación Óptica:</strong> Ejecuta la formulación de matriz de transferencia coherente de forma batcheada para todas las semillas y longitudes de onda en paralelo para obtener $r_s$ y $r_p$.</li>
-            <li><strong>Simulación de Parámetros Teóricos:</strong>
-                $$\rho = \frac{r_p}{r_s} \implies \psi_{\text{teo}} = \arctan(|\rho|), \quad \Delta_{\text{teo}} = \text{angle}(\rho)$$
-                $$I_{s,\text{teo}} = \sin(2\psi_{\text{teo}}) \sin(\Delta_{\text{teo}})$$
-                $$I_{c,\text{teo}} = \sin(2\psi_{\text{teo}}) \cos(\Delta_{\text{teo}})$$
-            </li>
-            <li><strong>Cálculo de Pérdida (Loss MSE):</strong>
-                <p>Calculamos el Error Cuadrático Medio por cada semilla $j$:</p>
-                $$\text{Loss}_j = \frac{1}{N} \sum_{\lambda} \left[ (I_{s,\text{teo}}^{(j)}(\lambda) - I_{s,\text{exp}}(\lambda))^2 + (I_{c,\text{teo}}^{(j)}(\lambda) - I_{c,\text{exp}}(\lambda))^2 \right]$$
-                <p>Para optimizar de forma eficiente con Autograd, sumamos las pérdidas de todas las semillas y ejecutamos <code>loss.backward()</code>.</p>
-            </li>
-            <li><strong>Extracción del Mínimo Global:</strong>
-                <p>Al finalizar las épocas, seleccionamos la semilla que logró el menor error final utilizando <code>loss_final.argmin()</code>. Sus parámetros óptimos son retornados como el ajuste definitivo.</p>
-            </li>
-        </ol>
-    </section>
+    <!-- BLOQUE 9: RECONSTRUCCIÓN FÍSICA DE ESPESORES -->
+    <div class="code-block-explanation">
+        <h2>9. Función de Reconstrucción de Espesores Físicos</h2>
+        <p>Esta función interna se encarga de rearmar el vector de espesores físicos a partir de las variables optimizables (logits) y fijas.</p>
 
-    <!-- Sección 6 -->
-    <section>
-        <h2>6. Ejemplos de Configuración de la API</h2>
-        <p>A continuación se muestra un ejemplo práctico de cómo configurar la API mejorada:</p>
+        <pre><code class="language-python">    inf_col = torch.full((num_starts, 1), float('inf'), dtype=torch.float64, device=device)
+    
+    def reconstruct_d_fisico(d_opt_tensor):
+        d_fisico_cols = []
+        o_idx = 0
+        for idx, opt in enumerate(is_optimizable):
+            if opt:
+                d_min, d_max = opt_bounds[o_idx]
+                col = d_min + (d_max - d_min) * torch.sigmoid(d_opt_tensor[:, o_idx])
+                d_fisico_cols.append(col)
+                o_idx += 1
+            else:
+                val = fixed_values[idx]
+                col = torch.full((d_opt_tensor.shape[0],), val, dtype=torch.float64, device=device)
+                d_fisico_cols.append(col)
+        return torch.stack(d_fisico_cols, dim=1)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 764</span><code>inf_col = torch.full(...)</code>: Prepara una columna de dimensiones <code>[num_starts, 1]</code> llena de infinito (<code>inf</code>). En el método de matriz de transferencia (TMM), las capas semi-infinitas exteriores (el aire inicial y el sustrato final) tienen un espesor físicamente infinito.</li>
+            <li><span class="line-ref">Línea 766</span><code>def reconstruct_d_fisico(d_opt_tensor)</code>: Declara la función de reconstrucción para usarla en cada iteración del bucle.</li>
+            <li><span class="line-ref">Línea 769-774</span><code>if opt: ...</code>: Si la capa es optimizable, aplica la sigmoide al tensor de logits (llevándolo a $[0, 1]$), lo escala multiplicando por el ancho del rango físico (<code>d_max - d_min</code>) y le suma el límite mínimo (<code>d_min</code>). Esto devuelve el espesor físico exacto.</li>
+            <li><span class="line-ref">Línea 775-778</span><code>else: ...</code>: Si la capa es fija, crea una columna donde todas las semillas tienen el mismo valor de espesor constante especificado.</li>
+            <li><span class="line-ref">Línea 779</span><code>return torch.stack(..., dim=1)</code>: Apila todas las columnas para reconstruir una matriz de espesores físicos de forma <code>[semillas, capas_finitas]</code>.</li>
+        </ul>
+    </div>
+
+    <!-- BLOQUE 10: RECONSTRUCCIÓN FÍSICA DE INDICES DE REFRACCIÓN -->
+    <div class="code-block-explanation">
+        <h2>10. Reconstrucción de Índices de Refracción Complejos</h2>
+        <p>Línea por línea se calculan los tensores de índices complejos a partir del espectro cromático de cada modelo.</p>
+
+        <pre><code class="language-python">    lams_2d = lams.unsqueeze(0)  # [1, num_wl]
+    inv_lam2 = 1e4 / (lams_2d ** 2)
+    inv_lam4 = 1e9 / (lams_2d ** 4)
+
+    def reconstruct_n_list_batched(p_opt_tensor):
+        layer_tensors = [None] * num_layers
         
-        <h3>Ejemplo: Capa de TiO2 rugosa/porosa con Bruggeman y Cauchy Absorbente</h3>
-        <p>Queremos ajustar un stack sobre Silicio, donde la capa densa de $\text{TiO}_2$ es paramétrica (Cauchy con absorción y límites personalizados) y la capa superior es porosa (Bruggeman optimizando la fracción de aire):</p>
+        # 1. Copiar capas estáticas (no paramétricas)
+        for idx in range(num_layers):
+            is_this_parametric = False
+            for d_lay in disp_layers:
+                if d_lay['layer_idx'] == idx:
+                    is_this_parametric = True
+                    break
+            if not is_this_parametric:
+                layer_tensors[idx] = n_list[idx].unsqueeze(0).expand(num_starts, -1)</code></pre>
 
-        <pre><code class="language-python">from fit_elipsometrico import ajuste_elipsometrico
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 781</span><code>lams_2d = lams.unsqueeze(0)</code>: Cambia la dimensión de <code>lams</code> de 1D a 2D (forma <code>[1, num_wl]</code>) para poder realizar operaciones matriciales y broadcasting por semilla.</li>
+            <li><span class="line-ref">Línea 782-783</span><code>inv_lam2 = 1e4 / ...</code>: Precomputa los términos $10^4/\lambda^2$ y $10^9/\lambda^4$ que se usan en las ecuaciones de Cauchy. Hacerlo fuera del bucle ahorra cálculos repetitivos y acelera notablemente la optimización.</li>
+            <li><span class="line-ref">Línea 785-787</span><code>def reconstruct_n_list_batched(...)</code>: Declara la función de reconstrucción para la lista de índices ópticos. Inicializa una lista vacía de tamaño igual al número de capas.</li>
+            <li><span class="line-ref">Línea 790-797</span><code># 1. Copiar capas estáticas...</code>: Recorre las capas. Si la capa no es paramétrica (es estática), toma su índice de refracción original <code>n_list[idx]</code> y lo expande agregando la dimensión de semillas, obteniendo una forma <code>[semillas, num_wl]</code>.</li>
+        </ul>
+    </div>
 
-# Nombre de la capa paramétrica puede ser cualquier etiqueta dummy
-layer_names = ['air', 'T1_porosa', 'T1_densa', 'Si']
+    <!-- BLOQUE 11: RECONSTRUCCIÓN CAUCHY Y BRUGGEMAN -->
+    <div class="code-block-explanation">
+        <h2>11. Aplicación de las Ecuaciones de Cauchy y Bruggeman</h2>
+        <p>Esta sección aplica las leyes de dispersión y calcula el índice efectivo de la aproximación de medio efectivo (EMA).</p>
 
-# Configuración avanzada de modelos
-layer_models = [
-    None,  # air
-    {
-        'model': 'bruggeman',
-        'f_bounds': (0.1, 0.6)  # Optimizar fracción de aire entre 10% y 60%
-    },
-    {
-        'model': 'cauchy_absorbent',
-        # Definimos bounds personalizados para A, B, C, D, E, F:
-        'bounds': [
-            (2.0, 2.7),   # A (n base alto para TiO2)
-            (0.0, 1.5),   # B
-            (-0.5, 0.5),  # C
-            (0.0, 0.1),   # D (absorción k base baja)
-            (0.0, 0.5),   # E
-            (-0.1, 0.1)   # F
-        ]
-    },
-    None  # Sustrato estático Si
-]
+        <pre><code class="language-python">        # 2. Calcular capas con Cauchy
+        for d_lay in disp_layers:
+            if d_lay['model_type'] in ['cauchy', 'cauchy_absorbent']:
+                idx = d_lay['layer_idx']
+                start_idx = d_lay['start_idx']
+                bounds = d_lay['param_bounds']
+                model_type = d_lay['model_type']
+                
+                p_phys_list = []
+                for k in range(d_lay['num_params']):
+                    p_min, p_max = float(bounds[k][0]), float(bounds[k][1])
+                    p_logit = p_opt_tensor[:, start_idx + k]
+                    p_phys = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
+                    p_phys_list.append(p_phys)
+                    
+                if model_type == 'cauchy':
+                    A = p_phys_list[0].unsqueeze(1)
+                    B = p_phys_list[1].unsqueeze(1)
+                    C = p_phys_list[2].unsqueeze(1)
+                    n_calc = A + B * inv_lam2 + C * inv_lam4
+                    n_complex = n_calc.to(torch.complex128)
+                elif model_type == 'cauchy_absorbent':
+                    A = p_phys_list[0].unsqueeze(1)
+                    B = p_phys_list[1].unsqueeze(1)
+                    C = p_phys_list[2].unsqueeze(1)
+                    D = p_phys_list[3].unsqueeze(1)
+                    E = p_phys_list[4].unsqueeze(1)
+                    F = p_phys_list[5].unsqueeze(1)
+                    n_calc = A + B * inv_lam2 + C * inv_lam4
+                    k_calc = D + E * inv_lam2 + F * inv_lam4
+                    k_calc = torch.clamp(k_calc, min=0.0)
+                    n_complex = torch.complex(n_calc, k_calc)
+                    
+                layer_tensors[idx] = n_complex</code></pre>
 
-# Límites de espesores para capas intermedias (T1_porosa y T1_densa)
-d_bounds = [(1.0, 40.0), (20.0, 120.0)]
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 800-806</span><code>for d_lay in disp_layers: ...</code>: Filtra las capas que usan modelos de Cauchy.</li>
+            <li><span class="line-ref">Línea 807-812</span><code>for k in range(d_lay['num_params'])</code>: Mapea cada logit correspondiente al parámetro Cauchy al rango físico correcto aplicando la sigmoide: $p_{\text{phys}} = p_{\text{min}} + (p_{\text{max}} - p_{\text{min}})\sigma(p_{\text{logit}})$.</li>
+            <li><span class="line-ref">Línea 814-819</span><code>if model_type == 'cauchy'</code>: Toma los parámetros físicos $A$, $B$ y $C$, les añade una dimensión de longitud de onda (unsqueeze) y calcula el índice óptico real usando la ecuación cromática de Cauchy. Lo convierte a tipo complejo de PyTorch (con parte imaginaria cero).</li>
+            <li><span class="line-ref">Línea 820-830</span><code>elif model_type == 'cauchy_absorbent'</code>: Realiza el mismo cálculo para los coeficientes de dispersión reales ($A, B, C$) e imaginarios ($D, E, F$). Clampea el coeficiente de extinción ($k$) a valores no-negativos y fusiona ambas componentes en un tensor complejo de tipo <code>torch.complex</code>.</li>
+            <li><span class="line-ref">Línea 832</span><code>layer_tensors[idx] = n_complex</code>: Asigna el índice calculado a la posición de la capa correspondiente.</li>
+        </ul>
+    </div>
 
-best_thick, best_Is, best_Ic, best_params, wl = ajuste_elipsometrico(
-    data_path='./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt',
-    skiprows=5,
-    layer_names=layer_names,
-    layer_models=layer_models,
-    d_bounds=d_bounds,
-    theta_0=69.5,
-    num_starts=300,
-    num_epochs=400,
-    use_cuda=True,
-    cache_path='./cache'  # Se guardará el hash del ajuste para carga instantánea posterior
-)</code></pre>
-    </section>
+    <!-- BLOQUE 12: BRUGGEMAN CON AUDOGRAD -->
+    <div class="code-block-explanation">
+        <h2>12. Cálculo del Medio Efectivo de Bruggeman</h2>
+        <p>Líneas dedicadas al procesamiento de capas mezcla que dependen de la dispersión de otra capa.</p>
+
+        <pre><code class="language-python">        # 3. Capas dependientes (Bruggeman EMA)
+        for d_lay in disp_layers:
+            if d_lay['model_type'] == 'bruggeman':
+                idx = d_lay['layer_idx']
+                n_base = layer_tensors[idx + 1]
+                n_air = torch.ones_like(n_base)
+                
+                if d_lay.get('f_optimizable', False):
+                    start_idx = d_lay['start_idx']
+                    p_min, p_max = float(d_lay['param_bounds'][0][0]), float(d_lay['param_bounds'][0][1])
+                    p_logit = p_opt_tensor[:, start_idx]
+                    f_air = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
+                    f_air = f_air.unsqueeze(1)
+                else:
+                    f_air = d_lay.get('f_air', 0.5)
+                
+                layer_tensors[idx] = n_eff_torch(n_base, n_air, f_air)
+
+        return torch.stack(layer_tensors, dim=1)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 835-839</span><code>if d_lay['model_type'] == 'bruggeman'</code>: Encuentra la capa que usa Bruggeman. Por diseño físico, toma como base el material denso ubicado inmediatamente debajo (capa <code>idx + 1</code>) y define la segunda fase como aire ($n_{\text{air}} = 1.0 + 0j$).</li>
+            <li><span class="line-ref">Línea 844-849</span><code>if d_lay.get('f_optimizable', False)</code>: Si la porosidad es variable, lee el logit correspondiente, le aplica la sigmoide para acotarlo entre los límites y le añade una dimensión para operar con broadcasting.</li>
+            <li><span class="line-ref">Línea 850-851</span><code>else: f_air = ...</code>: Si la porosidad es constante, asigna su fracción directa sin gradientes.</li>
+            <li><span class="line-ref">Línea 854</span><code>layer_tensors[idx] = n_eff_torch(...)</code>: Ejecuta el cálculo analítico de Bruggeman de forma vectorial usando una subfunción compatible con Autograd de PyTorch.</li>
+            <li><span class="line-ref">Línea 857</span><code>return torch.stack(layer_tensors, dim=1)</code>: Consolida todos los índices ópticos en un único tensor 3D de dimensiones <code>[semillas, capas, wavelengths]</code> listo para la simulación óptica.</li>
+        </ul>
+    </div>
+
+    <!-- BLOQUE 13: BUCLE DE OPTIMIZACIÓN AUTOGRAD -->
+    <div class="code-block-explanation">
+        <h2>13. El Bucle de Optimización por Gradiente</h2>
+        <p>Sección crítica del código donde se ejecuta el bucle de épocas, la simulación física electromagnética y la retropropagación de gradientes.</p>
+
+        <pre><code class="language-python">    for epoch in range(num_epochs):
+        optimizer.zero_grad()
+        
+        d_fisico = reconstruct_d_fisico(d_opt)
+        d_full = torch.cat([inf_col, d_fisico, inf_col], dim=1)
+        d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
+        
+        if is_parametric:
+            n_list_3d = reconstruct_n_list_batched(p_opt)
+            res_s = coh_tmm_torch_batched(pol='s', n_list=n_list_3d, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+            res_p = coh_tmm_torch_batched(pol='p', n_list=n_list_3d, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+        else:
+            res_s = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+            res_p = tmm.coh_tmm_torch(pol='p', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 860</span><code>for epoch in range(num_epochs)</code>: Comienza el ciclo de entrenamiento o ajuste por gradiente.</li>
+            <li><span class="line-ref">Línea 861</span><code>optimizer.zero_grad()</code>: Borra los gradientes del paso anterior. En PyTorch, los gradientes se acumulan por defecto, por lo que es necesario resetearlos a cero en cada iteración.</li>
+            <li><span class="line-ref">Línea 863</span><code>d_fisico = reconstruct_d_fisico(d_opt)</code>: Llama a la función del bloque 9 para transformar logits a espesores físicos.</li>
+            <li><span class="line-ref">Línea 864-865</span><code>d_full = torch.cat(...)</code>: Agrega las columnas infinitas de los extremos al principio y final de la matriz de espesores de las capas intermedias, y las expande a 3D copiando el valor para todas las longitudes de onda (forma final: <code>[semillas, capas, wavelengths]</code>).</li>
+            <li><span class="line-ref">Línea 867-870</span><code>if is_parametric: ...</code>: Si se optimiza el índice, llama a la reconstrucción paramétrica cromática y ejecuta el cálculo de matrices de transferencia en su variante batcheada y paralela (<code>coh_tmm_torch_batched</code>) para obtener reflectancias s y p.</li>
+            <li><span class="line-ref">Línea 871-873</span><code>else: ...</code>: Si los índices son estáticos, ejecuta el solver de TMM vectorial convencional sobre el tensor estático <code>n_list</code> expandido.</li>
+        </ul>
+    </div>
+
+    <!-- BLOQUE 14: ECUACIONES ELIPSOMÉTRICAS Y PÉRDIDA -->
+    <div class="code-block-explanation">
+        <h2>14. Cálculo de Coeficientes Elipsométricos y Pérdida MSE</h2>
+        <p>Líneas dedicadas a resolver las ecuaciones ópticas elipsométricas y a guiar la retropropagación.</p>
+
+        <pre><code class="language-python">        r_s = res_s['r']
+        r_p = res_p['p'] # Nota: r_p = res_p['r']
+        
+        rho = torch.conj(r_p / r_s)
+        psi_teo = torch.atan(torch.abs(rho))
+        delta_teo = torch.angle(rho)
+        
+        Is_teo = torch.sin(2 * psi_teo) * torch.sin(delta_teo)
+        Ic_teo = torch.sin(2 * psi_teo) * torch.cos(delta_teo)
+        
+        error_Is = (Is_teo - Is_exp) ** 2
+        error_Ic = (Ic_teo - Ic_exp) ** 2
+        
+        loss_per_start = (error_Is + error_Ic).mean(dim=-1)
+        loss = loss_per_start.sum()
+        
+        loss.backward()
+        optimizer.step()</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 875-876</span><code>r_s / r_p = res_s/p['r']</code>: Extrae los coeficientes de reflexión complejos calculados.</li>
+            <li><span class="line-ref">Línea 878-880</span><code>rho = ...</code>: Calcula la relación de reflexión compleja $\rho = r_p / r_s$ (aplicando conjugado complejo debido a las convenciones de fase). Extrae los ángulos teóricos $\psi$ (arco tangente del módulo) y $\Delta$ (fase o ángulo complejo).</li>
+            <li><span class="line-ref">Línea 882-883</span><code>Is_teo / Ic_teo = ...</code>: Aplica las identidades trigonométricas para proyectar $\psi$ y $\Delta$ en los coeficientes elipsométricos continuos $I_s$ e $I_c$ teóricos.</li>
+            <li><span class="line-ref">Línea 885-886</span><code>error_Is / error_Ic = ...</code>: Calcula el error al cuadrado contra las mediciones experimentales para cada punto espectral.</li>
+            <li><span class="line-ref">Línea 888</span><code>loss_per_start = ...mean(dim=-1)</code>: Calcula el Error Cuadrático Medio (MSE) promedio de todas las longitudes de onda, de manera individual para cada semilla.</li>
+            <li><span class="line-ref">Línea 889</span><code>loss = loss_per_start.sum()</code>: Suma las pérdidas de todas las semillas en un único escalar. Esto permite propagar los gradientes de todas las optimizaciones simultáneamente en una sola llamada de Autograd.</li>
+            <li><span class="line-ref">Línea 891</span><code>loss.backward()</code>: **Retropropagación automática**. PyTorch calcula de manera exacta las derivadas de la pérdida con respecto a todos los logits optimizables (espesores e índices).</li>
+            <li><span class="line-ref">Línea 892</span><code>optimizer.step()</code>: **Paso de optimización**. El optimizador Adam actualiza los logits en base a las derivadas calculadas para minimizar el error.</li>
+        </ul>
+    </div>
+
+    <!-- BLOQUE 15: PREVENCIÓN DE SATURACIÓN Y SELECCIÓN DEL MÍNIMO -->
+    <div class="code-block-explanation">
+        <h2>15. Clampeo de Variables y Extracción del Mínimo Global</h2>
+        <p>Líneas finales de procesamiento que previenen problemas de gradiente y extraen los parámetros del mejor ajuste absoluto.</p>
+
+        <pre><code class="language-python">        with torch.no_grad():
+            d_opt.data.clamp_(-5, 5)
+            if is_parametric:
+                p_opt.data.clamp_(-5, 5)
+        
+        if epoch % 50 == 0 or epoch == num_epochs - 1:
+            mejor_loss = loss_per_start.min().item()
+            print(f"Epoch {epoch}/{num_epochs} | Mejor Loss (MSE): {mejor_loss:.6f}")
+            
+    # --- EXTRACCIÓN DEL MÍNIMO ---
+    best_idx = loss_final.argmin()
+    best_thicknesses = d_final_fisico[best_idx].cpu().detach().numpy()
+    best_Is_curve = Is_teo_final[best_idx].cpu().detach().numpy()
+    best_Ic_curve = Ic_teo_final[best_idx].cpu().detach().numpy()</code></pre>
+
+        <ul class="explanation-list">
+            <li><span class="line-ref">Línea 896-899</span><code>d_opt/p_opt.data.clamp_(-5, 5)</code>: Limita el valor absoluto de los logits a un rango de $[-5, 5]$ en modo sin gradientes. Esto evita la saturación de la función sigmoide y mantiene activos los gradientes para la siguiente iteración.</li>
+            <li><span class="line-ref">Línea 901-903</span><code>if epoch % 50 == 0 ...</code>: Cada 50 épocas, extrae la pérdida de la mejor semilla en esa iteración y la imprime en consola para monitorear la convergencia del ajuste.</li>
+            <li><span class="line-ref">Línea 933</span><code>best_idx = loss_final.argmin()</code>: Una vez completado el bucle de épocas, encuentra cuál de las semillas paralelas (ej: la número 142 de las 600) obtuvo la menor pérdida MSE absoluta.</li>
+            <li><span class="line-ref">Línea 935-938</span><code>best_thicknesses = ...</code>: Extrae los espesores físicos, la curva de $I_s$ y la curva de $I_c$ teóricos correspondientes a esa semilla óptima, los mueve de vuelta a la CPU y los convierte en arreglos comunes de numpy para graficar o guardar.</li>
+        </ul>
+    </div>
 
     <footer>
         <p>&copy; 2026 TMM-R Ellipsometry API. Generado con KaTeX & PrismJS.</p>
