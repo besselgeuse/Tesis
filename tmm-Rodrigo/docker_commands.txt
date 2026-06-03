@@ -1,12 +1,87 @@
-docker images: "muestra las imagenes"
-docker pull imagen:"version": "descarga la imagen del docker"
-docker image rm imagen:"version" : "elimina la imagen del docker"
-docker run -p8000:8000 --name mi_app -d imagen:"version": "ejecuta la imagen del docker en segundo plano"
-docker stop nombre_contenedor : "detiene la imagen del docker"
-docker create imagen:"version" : "crea la imagen del docker pero no la ejecuta"
-docker start nombre_contenedor : "inicia la imagen del docker"
-docker create --name mi_app imagen:"version": "crea la imagen del docker pero no la ejecuta"
-docker create -p8000:8000 --name mi_app imagen:"version": "crea la imagen del docker pero no la ejecuta y mapea el puerto 8000 del contenedor al puerto 8000 del host"
-docker ps : "muestra los contenedores en ejecucion"
-docker ps -a: "muestra todos los contenedores"
-docker container rm nombre_contenedor : "elimina el contenedor"
+========================================================================
+GUÍA Y DICCIONARIO DE COMANDOS DE DOCKER
+========================================================================
+
+------------------------------------------------------------------------
+1. GESTIÓN DE IMÁGENES DOCKER
+------------------------------------------------------------------------
+docker images
+   -> Muestra todas las imágenes de Docker descargadas o creadas localmente.
+
+docker pull <imagen>:<tag>
+   -> Descarga una imagen desde un registro como Docker Hub (ej: docker pull mysql:8.0).
+
+docker rmi <imagen_id_o_nombre>
+   -> Elimina una imagen de Docker de la máquina local (sinónimo de 'docker image rm').
+
+------------------------------------------------------------------------
+2. GESTIÓN DE CONTENEDORES INDIVIDUALES (DOCKER CLI)
+------------------------------------------------------------------------
+docker create --name <nombre> -p <puerto_host>:<puerto_contenedor> <imagen>:<tag>
+   -> Crea un contenedor a partir de una imagen asignándole un nombre y mapeando puertos, pero no lo inicia.
+
+docker start <nombre_o_id>
+   -> Inicia un contenedor previamente creado o que se encuentra detenido.
+
+docker stop <nombre_o_id>
+   -> Detiene de manera controlada un contenedor en ejecución.
+
+docker ps
+   -> Muestra únicamente los contenedores que se están ejecutando actualmente.
+
+docker ps -a
+   -> Muestra todos los contenedores creados en el sistema (tanto activos como detenidos).
+
+docker rm <nombre_o_id>
+   -> Elimina de la máquina local un contenedor que ya está detenido (sinónimo de 'docker container rm').
+
+docker run -d --name <nombre> -p <puerto_host>:<puerto_contenedor> <imagen>:<tag>
+   -> Descarga la imagen (si no existe), crea el contenedor, mapea los puertos y lo ejecuta inmediatamente en segundo plano (modo detached: '-d').
+
+------------------------------------------------------------------------
+3. ORQUESTACIÓN CON DOCKER COMPOSE
+------------------------------------------------------------------------
+*NOTA IMPORTANTE:* La configuración de puertos (ports) y volúmenes (volumes) ya se especifica dentro de tu archivo 'docker-compose.yml'. Por tanto, no necesitas pasar flags adicionales como '-v' o '-p' en tus comandos 'docker compose up'.
+
+docker compose up
+   -> Crea y arranca todos los servicios definidos. Se ejecuta en primer plano, bloqueando la terminal y mostrando los logs en vivo.
+
+docker compose up -d
+   -> Crea y arranca los servicios en segundo plano (modo detached), liberando la terminal.
+
+docker compose up --build
+   -> Fuerza la reconstrucción de las imágenes de tus Dockerfiles locales antes de levantar los servicios en primer plano.
+
+docker compose up --build -d
+   -> Fuerza la reconstrucción de las imágenes locales y arranca los servicios en segundo plano (modo detached). Es el comando más recomendado para aplicar cambios en el código y configuración a la vez.
+
+docker compose up --build -d --no-cache
+   -> Reconstruye las imágenes locales desde cero (sin usar capas cacheadas) y levanta los servicios en segundo plano. Útil para asegurar una instalación limpia de dependencias.
+
+docker compose down
+   -> Detiene y elimina los contenedores, redes y otros elementos creados al levantar el Docker Compose (mantiene a salvo los datos de los volúmenes).
+
+docker compose down -v
+   -> Detiene y elimina todo lo anterior, y adicionalmente borra los volúmenes de datos asociados (los volúmenes declarados en el compose). Ideal para restaurar la base de datos a su estado original/vacío.
+
+docker compose ps
+   -> Muestra el estado de los contenedores asociados al proyecto de compose actual.
+
+------------------------------------------------------------------------
+4. COMANDOS ÚTILES PARA DIAGNÓSTICO Y LIMPIEZA
+------------------------------------------------------------------------
+docker logs <nombre_contenedor>
+   -> Muestra en pantalla el historial de logs (salida de consola) de un contenedor específico.
+
+docker compose logs -f <nombre_servicio>
+   -> Muestra y sigue en tiempo real (modo follow: '-f') los logs de un servicio específico de Compose (ej: docker compose logs -f api-prueba).
+
+docker exec -it <nombre_contenedor_o_servicio> bash
+   -> Abre una sesión interactiva con la terminal de comandos 'bash' dentro del contenedor en ejecución. Útil para depurar y explorar archivos o bases de datos por dentro.
+   -> Si el contenedor no tiene bash instalado, puedes usar: docker exec -it <nombre_contenedor> sh
+
+docker system prune
+   -> Comando de mantenimiento que elimina contenedores detenidos, redes en desuso y caché acumulada para liberar espacio en disco.
+
+docker volume prune
+   -> Elimina todos los volúmenes locales que no estén asignados a ningún contenedor activo.
