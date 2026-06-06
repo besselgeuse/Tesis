@@ -36,21 +36,21 @@ def crear_token_acceso(datos:dict,tiempo_vida_minutos:int=60) -> str:
     convertir_datos.update({"exp":expiracion})
     return jwt.encode(convertir_datos,SECRET_KEY,algorithm=ALGORITHM)
 
-def obtener_usuario_actual(token:Annotated[str,Depends(oauth2_scheme)],db:db_dependency) -> models.user:
+def obtener_usuario_actual(token: Annotated[str, Depends(oauth2_scheme)], db: db_dependency) -> models.User:
     excepcion_credenciales = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail = "no se pudieron validar las credenciales",
-        headers = {"WWW-Authenticate": "Bearer"},
+        detail="no se pudieron validar las credenciales",
+        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token,SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise excepcion_credenciales
     except jwt.PyJWTError:
         raise excepcion_credenciales
-    usuario = db.query(models.user).filter(models.user.email == email).first()
-    if usuario is NonE:
+    usuario = db.query(models.User).filter(models.User.email == email).first()
+    if usuario is None:
         raise excepcion_credenciales
     return usuario
 
@@ -85,33 +85,38 @@ class SimParam(BaseModel):
     stack: Stack
 
 
-@app.post('/register',status_code=status.HTTP_201_CREATED)
-def registrar_usuario(usercreate: UserCreate,db:db_dependency):
-    usuarios_existente = db_query(models.user).filter(models.User.email == usercreate.email).first()
+@app.post('/register', status_code=status.HTTP_201_CREATED)
+def registrar_usuario(usercreate: UserCreate, db: db_dependency):
+    usuario_existente = db.query(models.User).filter(models.User.email == usercreate.email).first()
     if usuario_existente:
         raise HTTPException(status_code=400, detail="email actualmente en uso")
-    nuevo_usuario = models.user(
-        email =usercreate.email,
-        hashed_password = models.user.generar_hash(usercreate.password)
+    nuevo_usuario = models.User(
+        email=usercreate.email,
+        hashed_password=models.User.generar_hash(usercreate.password)
     )    
     db.add(nuevo_usuario)
     db.commit()
-    return{"message": "Usuario registrado exitosamente"}
+    return {"message": "Usuario registrado exitosamente"}
 
 @app.post('/token')
-def iniciar_sesion(db:db_dependency,form_data: oAuthPasswordRequestForm = Depends()):
-    usuario = db.query(models.user).filter(models.user.email == form_data.username).first()
+def iniciar_sesion(db: db_dependency, form_data: OAuth2PasswordRequestForm = Depends()):
+    usuario = db.query(models.User).filter(models.User.email == form_data.username).first()
     if usuario is None or not usuario.verificar_password(form_data.password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"credenciales incorrectas"},
-        headers={"WWW-Authenticate":"Bearer"},
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="credenciales incorrectas",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    jwt_token = crear_token_acceso(datos = {"sub":usuario.email})
-    return {"access_token":jwt_token,"token_type": "Bearer"}
+    jwt_token = crear_token_acceso(datos={"sub": usuario.email})
+    return {"access_token": jwt_token, "token_type": "Bearer"}
 
 
 @app.post('/simular_stack', status_code=status.HTTP_201_CREATED)
-async def simular_stack(registro: SimParam, db: db_dependency,usuario_actual = Annotated[models.user,Depends(obtener_usuario_actual)]):
+async def simular_stack(
+    registro: SimParam, 
+    db: db_dependency, 
+    usuario_actual: Annotated[models.User, Depends(obtener_usuario_actual)]
+):
     try:
         # 1. Extraer nombres y modelos en el formato esperado por el script físico
         layer_names = [layer.name for layer in registro.stack.layers]
@@ -177,6 +182,7 @@ async def simular_stack(registro: SimParam, db: db_dependency,usuario_actual = A
             layers=layer_db,
             best_Is=best_Is.tolist(),
             best_Ic=best_Ic.tolist(),
+            user_id=usuario_actual.id
         )
 
         db.add(stack_db)
@@ -190,9 +196,12 @@ async def simular_stack(registro: SimParam, db: db_dependency,usuario_actual = A
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @app.get("/mostrar_resultados", status_code=status.HTTP_200_OK)
-async def obtener_resultados(db: db_dependency,usuario_actual = Annotated[models.user,Depends(obtener_usuario_actual)]):
-    """Retorna todos los stacks registrados con un resumen de sus resultados."""
-    stacks = db.query(models.Stack).all()
+async def obtener_resultados(
+    db: db_dependency, 
+    usuario_actual: Annotated[models.User, Depends(obtener_usuario_actual)]
+):
+    """Retorna todos los stacks registrados del usuario autenticado."""
+    stacks = db.query(models.Stack).filter(models.Stack.user_id == usuario_actual.id).all()
     resultado = []
     for s in stacks:
         resultado.append({
@@ -206,9 +215,13 @@ async def obtener_resultados(db: db_dependency,usuario_actual = Annotated[models
     return resultado
 
 @app.get("/mostrar_resultados/{id}", status_code=status.HTTP_200_OK)
-async def obtener_resultados_id(id: int, db: db_dependency):
-    """Retorna un stack registrado por ID con el detalle de sus resultados."""
-    stack = db.query(models.Stack).filter(models.Stack.id == id).first()
+async def obtener_resultados_id(
+    id: int, 
+    db: db_dependency, 
+    usuario_actual: Annotated[models.User, Depends(obtener_usuario_actual)]
+):
+    """Retorna un stack registrado del usuario autenticado por ID."""
+    stack = db.query(models.Stack).filter(models.Stack.id == id, models.Stack.user_id == usuario_actual.id).first()
     if not stack:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stack no encontrado")
         
@@ -220,4 +233,3 @@ async def obtener_resultados_id(id: int, db: db_dependency):
         "best_Ic": stack.best_Ic,
         "fecha": str(stack.created_at),
     }
-    
