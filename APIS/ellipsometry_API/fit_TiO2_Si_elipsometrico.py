@@ -11,25 +11,32 @@ from tmm_utils_Rodrigo import cauchy_fn
 
 data_path = r'./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt'
 skiprows = 5
-layer_names = ['air','T1_light', 'T1_densa','Si']
-layer_models = [None,'bruggeman','cauchy', None]
-d_bounds = [(1, 100),(1, 100)] 
+layer_names = ['air', 'TiO2_sputtering','Si']
+layer_models = [
+    None,  # air (capa estática)
+    {
+        'model': 'cauchy',
+        'bounds': [
+            (0., 30.),   # A (TiO2 densa)
+            (-10., 50.),  # B
+            (-100., 100.)   # C
+        ]
+    },
+    None  # Si (capa estática)
+]
+d_bounds = [(0, 80)] 
 theta_0 = 69.5
-num_starts = 600
-num_epochs = 500
-lr = 1.5
+num_starts = 50
+num_epochs = 50
+lr = 1
 use_cuda = True
 
 best_thicknesses, best_Is, best_Ic, best_params, wl_exp = ajuste_elipsometrico(
     data_path, skiprows, layer_names, layer_models, d_bounds, 
-    theta_0, num_starts, num_epochs, lr, use_cuda,
-    cache_path='./cache'
-)
+    theta_0, num_starts, num_epochs, lr, use_cuda)
+    
 #%%
 #Ahora obtener las curvas teóricas de y psi y delta y graficarlas contra el ajuste
-A,B,C = best_params['T1_densa']['A'],best_params['T1_densa']['B'],best_params['T1_densa']['C']
-n_fit= cauchy_fn(A,B,C)(wl_exp)
-
 wl_exp,psi_exp,delta_exp = np.loadtxt(data_path,skiprows=skiprows,unpack=True)
 
 # Convertir ángulos de grados a radianes
@@ -52,5 +59,25 @@ ax[0].set_ylabel('Is')
 ax[1].set_xlabel('Wavelength [nm]')
 ax[1].set_ylabel('Ic')
 
+plt.show()
+# %%
+#Ahora voy a graficar el n_fit
+A,B,C = best_params['TiO2_sputtering']['A'],best_params['TiO2_sputtering']['B'],best_params['TiO2_sputtering']['C']
+n_fit= cauchy_fn(A,B,C)(wl_exp)
+plt.plot(wl_exp,n_fit,label='n_fit')
+plt.xlabel('Wavelength [nm]')
+plt.ylabel('n')
+plt.legend()
+plt.grid()
+plt.show()
+# %%
+#Ahora voy a graficar el n_fit
+A,B,C = best_params['SiO2']['A'],best_params['SiO2']['B'],best_params['SiO2']['C']
+n_fit= cauchy_fn(A,B,C)(wl_exp)
+plt.plot(wl_exp,n_fit,label='n_fit')
+plt.xlabel('Wavelength [nm]')
+plt.ylabel('n')
+plt.legend()
+plt.grid()
 plt.show()
 # %%

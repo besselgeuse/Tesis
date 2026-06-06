@@ -26,3 +26,10 @@ env/
 # OS
 Thumbs.db
 .DS_Store
+
+#guias
+./ellipsometry_API/guia_fit_ellipsometry.html
+./ellipsometry_API/guia_fit_ellipsometry.
+
+#gitignore
+.gitignore

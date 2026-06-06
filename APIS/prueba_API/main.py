@@ -82,7 +82,6 @@ def registrar_usuario(usercreate: UserCreate, db: db_dependency):
 
 @app.post("/token")
 def iniciar_sesion(db: db_dependency, form_data: OAuth2PasswordRequestForm = Depends()):
-    # OAuth2PasswordRequestForm mapea el campo 'username' al email ingresado
     usuario = db.query(models.User).filter(models.User.email == form_data.username).first()
     
     if not usuario or not usuario.verificar_password(form_data.password):
@@ -90,12 +89,8 @@ def iniciar_sesion(db: db_dependency, form_data: OAuth2PasswordRequestForm = Dep
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Generar el token empaquetando el email del usuario
+        ) 
     token_jwt = crear_token_acceso(datos={"sub": usuario.email})
-    
-    # Es obligatorio para el estándar OAuth2 retornar el token_type como 'bearer'
     return {"access_token": token_jwt, "token_type": "bearer"}
 
 

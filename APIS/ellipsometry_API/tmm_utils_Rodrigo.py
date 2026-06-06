@@ -711,13 +711,13 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
             d_min, d_max = float(b[0]), float(b[1])
             if d_min == d_max:
                 is_optimizable.append(False)
-                fixed_values[idx] = d_min
+                fixed_values[idx] = d_min #Si los espesores son iguales no se optimiza esta capa
             else:
                 is_optimizable.append(True)
                 opt_bounds.append((d_min, d_max))
         else:
             is_optimizable.append(False)
-            fixed_values[idx] = float(b)
+            fixed_values[idx] = float(b) #Si se ingresa un solo espesor no se optimiza esta capa
             
     num_opt_layers = sum(is_optimizable)
     print(f"Capas finitas a optimizar espesor: {num_opt_layers} | Capas de espesor fijo: {num_finite_layers - num_opt_layers}")
