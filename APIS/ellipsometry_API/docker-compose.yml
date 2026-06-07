@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: db_ellipsometry_fit_api
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: CNEA1234
+      MYSQL_DATABASE: ellipsometry_fit_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pCNEA1234" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Servicio de la API TMM
+  ellipsometry_fit_api:
+    build: .
+    container_name: ellipsometry_fit_api
+    restart: on-failure
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      # Apunta al nombre de host 'db' (nombre del servicio en Docker)
+      - DATABASE_URL=mysql+pymysql://root:CNEA1234@db:3306/ellipsometry_fit_db
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Volumen para persistir los datos de MySQL en tu computadora host
+volumes:
+  mysql_data:

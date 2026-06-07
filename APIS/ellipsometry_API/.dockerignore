@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+docker-compose.yml
+dockerfile
+.dockerignore
+.env
+fit_SiO2_Si_elipsometrico.py
+fit_TiO2_Si_elipsometrico.py

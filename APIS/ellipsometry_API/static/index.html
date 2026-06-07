@@ -1,0 +1,1869 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ellipsometry Fit — Ajuste Elipsométrico con PyTorch</title>
+    <meta name="description" content="Interfaz gráfica para ajuste elipsométrico con optimización PyTorch GPU">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        /* ── Reset & Base ──────────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-primary: #080c1a;
+            --bg-secondary: #0f1429;
+            --card-bg: rgba(255, 255, 255, 0.04);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover: rgba(255, 255, 255, 0.07);
+            --accent: #00d4ff;
+            --accent-glow: rgba(0, 212, 255, 0.25);
+            --accent-secondary: #7c3aed;
+            --accent-secondary-glow: rgba(124, 58, 237, 0.2);
+            --text-primary: #e2e8f0;
+            --text-secondary: #333b46;
+            --text-muted: #64748b;
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --input-bg: rgba(255, 255, 255, 0.06);
+            --input-border: rgba(255, 255, 255, 0.12);
+            --input-focus: rgba(0, 212, 255, 0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 10%, rgba(0, 212, 255, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 80%, rgba(124, 58, 237, 0.06) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── Typography ────────────────────────────────────────── */
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        h2 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+        }
+
+        h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        small {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* ── Layout ────────────────────────────────────────────── */
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 4rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.3rem;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+
+        /* ── Auth Bar ──────────────────────────────────────────── */
+        .auth-bar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+
+        .auth-bar .user-email {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .auth-bar button {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-secondary);
+            padding: 0.4rem 1rem;
+            border-radius: 999px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .auth-bar button:hover {
+            background: var(--card-hover);
+            color: var(--text-primary);
+        }
+
+        /* ── Modal Overlay ─────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+
+        .modal-overlay.hidden {
+            display: none;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            width: 100%;
+            max-width: 400px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal h2 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .modal .btn-primary {
+            width: 100%;
+            padding: 0.7rem;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            border: none;
+            border-radius: var(--radius-sm);
+            color: #fff;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            margin-bottom: 0.75rem;
+        }
+
+        .modal .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px var(--accent-glow);
+        }
+
+        .modal .btn-secondary {
+            width: 100%;
+            padding: 0.6rem;
+            background: transparent;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .modal .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .modal .error-msg {
+            color: var(--error);
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 0.5rem;
+            min-height: 1.2rem;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .tab-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-secondary);
+            padding: 0.5rem 1.5rem;
+            border-radius: 999px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .tab-btn:hover {
+            background: var(--card-hover);
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(124, 58, 237, 0.15));
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ── Cards ──────────────────────────────────────────────── */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-header h2 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-header .icon {
+            font-size: 1.1rem;
+        }
+
+        /* ── Form Grid ─────────────────────────────────────────── */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 800px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── Inputs ────────────────────────────────────────────── */
+        label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.35rem;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="email"],
+        input[type="password"],
+        select {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: var(--radius-sm);
+            padding: 0.55rem 0.75rem;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            transition: var(--transition);
+            outline: none;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--input-focus);
+        }
+
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.7rem center;
+            padding-right: 2rem;
+        }
+
+        option {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-top: 0.5rem;
+            cursor: pointer;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin-bottom: 0;
+            cursor: pointer;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        /* ── Layer Cards ───────────────────────────────────────── */
+        .layer-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.75rem;
+            position: relative;
+            transition: var(--transition);
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .layer-card:hover {
+            border-color: rgba(0, 212, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .layer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .layer-number {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .btn-remove-layer {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--error);
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+
+        .btn-remove-layer:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: var(--error);
+        }
+
+        .layer-fields {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+        }
+
+        .layer-row-top {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .layer-row-thickness {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .bounds-section {
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background: rgba(0, 212, 255, 0.04);
+            border: 1px solid rgba(0, 212, 255, 0.1);
+            border-radius: var(--radius-sm);
+        }
+
+        .bounds-section h4 {
+            font-size: 0.75rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .bounds-row {
+            display: grid;
+            grid-template-columns: auto 1fr 1fr;
+            gap: 0.5rem;
+            align-items: center;
+            margin-bottom: 0.4rem;
+        }
+
+        .bounds-row .param-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            min-width: 20px;
+            text-align: center;
+        }
+
+        /* ── Stack Preview ─────────────────────────────────────── */
+        .stack-preview {
+            margin-top: 1rem;
+            border: 1px dashed var(--card-border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .stack-preview h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            text-align: center;
+        }
+
+        .stack-layer-bar {
+            text-align: center;
+            padding: 0.35rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-left: 3px solid;
+            margin-bottom: 2px;
+            border-radius: 0 4px 4px 0;
+            transition: var(--transition);
+        }
+
+        .stack-layer-bar.static {
+            background: rgba(100, 116, 139, 0.15);
+            border-color: var(--text-muted);
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .stack-layer-bar.parametric {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .stack-layer-bar.bruggeman {
+            background: rgba(124, 58, 237, 0.1);
+            border-color: var(--accent-secondary);
+            color: var(--accent-secondary);
+        }
+
+        /* ── Buttons ───────────────────────────────────────────── */
+        .btn-add-layer {
+            width: 100%;
+            padding: 0.65rem;
+            background: rgba(0, 212, 255, 0.08);
+            border: 1px dashed rgba(0, 212, 255, 0.3);
+            border-radius: var(--radius);
+            color: var(--accent);
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-add-layer:hover {
+            background: rgba(0, 212, 255, 0.14);
+            border-color: var(--accent);
+        }
+
+        .btn-submit {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 0.85rem 2rem;
+            background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+            border: none;
+            border-radius: 999px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px var(--accent-glow), 0 4px 15px var(--accent-secondary-glow);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-submit .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        .btn-submit.loading .spinner {
+            display: inline-block;
+        }
+
+        .btn-submit.loading .btn-text {
+            opacity: 0.8;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── Results Panel ─────────────────────────────────────── */
+        .results-section {
+            margin-top: 2rem;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .results-section.hidden {
+            display: none;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .result-metric {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .result-metric .value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--success));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .result-metric .label {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 0.3rem;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 350px;
+            margin-bottom: 1.5rem;
+        }
+
+        .thicknesses-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .thicknesses-table th {
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .thicknesses-table td {
+            padding: 0.6rem 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }
+
+        .thicknesses-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* ── History ───────────────────────────────────────────── */
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .history-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            gap: 1rem;
+            align-items: center;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 1rem 1.25rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .history-item:hover {
+            border-color: rgba(0, 212, 255, 0.3);
+            background: var(--card-hover);
+        }
+
+        .history-item .id-badge {
+            background: rgba(0, 212, 255, 0.12);
+            color: var(--accent);
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .history-item .name {
+            font-weight: 500;
+        }
+
+        .history-item .date {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .history-item .layers-count {
+            font-size: 0.85rem;
+            color: var(--accent-secondary);
+            font-weight: 600;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-download {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            color: var(--success);
+            padding: 0.3rem 0.7rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+
+        .btn-download:hover {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: var(--success);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state .icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        /* ── Info Bar ──────────────────────────────────────────── */
+        .info-bar {
+            display: flex;
+            gap: 1rem;
+            padding: 0.6rem 1rem;
+            background: rgba(0, 212, 255, 0.06);
+            border: 1px solid rgba(0, 212, 255, 0.12);
+            border-radius: var(--radius-sm);
+            margin-bottom: 1rem;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            flex-wrap: wrap;
+        }
+
+        .info-bar span {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .info-bar .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: inline-block;
+        }
+
+        /* ── Notification Toast ────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            padding: 0.85rem 1.25rem;
+            border-radius: var(--radius);
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 1000;
+            animation: toastIn 0.3s ease;
+            max-width: 400px;
+        }
+
+        .toast.success {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--success);
+        }
+
+        .toast.error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error);
+        }
+
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ── Scrollbar ─────────────────────────────────────────── */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--card-border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ── Auth Modal ──────────────────────────────── -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal">
+            <h2 id="auth-title">🔐 Iniciar Sesión</h2>
+            <div class="form-group">
+                <label for="auth-email">Email</label>
+                <input type="email" id="auth-email" placeholder="usuario@ejemplo.com">
+            </div>
+            <div class="form-group">
+                <label for="auth-password">Contraseña</label>
+                <input type="password" id="auth-password" placeholder="••••••••">
+            </div>
+            <button class="btn-primary" id="btn-login" type="button">Iniciar Sesión</button>
+            <button class="btn-secondary" id="btn-toggle-register" type="button">¿No tienes cuenta? Registrarse</button>
+            <div class="error-msg" id="auth-error"></div>
+        </div>
+    </div>
+
+    <div class="app">
+        <!-- ── Auth Bar ──────────────────────────────── -->
+        <div class="auth-bar" id="auth-bar" style="display:none;">
+            <span>👤 <span class="user-email" id="display-email"></span></span>
+            <button id="btn-logout" type="button">Cerrar Sesión</button>
+        </div>
+
+        <!-- ── Header ──────────────────────────────────── -->
+        <header>
+            <h1>🔬 Ellipsometry Fit</h1>
+            <p>Ajuste Elipsométrico · Optimización con PyTorch GPU</p>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="simulator">🔬 Simulador</button>
+                <button class="tab-btn" data-tab="history">📋 Historial</button>
+            </div>
+        </header>
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- TAB: SIMULADOR                                 -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="tab-simulator" class="tab-content active">
+            <div class="form-grid">
+                <!-- ── Left Column: Stack Builder ──────── -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><span class="icon">🧱</span> Stack Óptico</h2>
+                    </div>
+                    <div class="info-bar">
+                        <span><span class="dot"></span> Define las capas del stack de arriba a abajo</span>
+                        <span><span class="dot"></span> Capas estáticas: índices de la base de datos</span>
+                    </div>
+
+                    <div id="layers-container">
+                        <!-- Dynamic layer cards inserted here -->
+                    </div>
+
+                    <button class="btn-add-layer" id="btn-add-layer" type="button">+ Agregar Capa</button>
+
+                    <!-- Stack Preview -->
+                    <div class="stack-preview" id="stack-preview">
+                        <h3>Vista Previa del Stack</h3>
+                        <div id="preview-layers"></div>
+                    </div>
+                </div>
+
+                <!-- ── Right Column: Parameters ───────── -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><span class="icon">⚙️</span> Parámetros</h2>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nombre">Nombre de la simulación</label>
+                        <input type="text" id="nombre" value="Ajuste 1" placeholder="Ej: TiO2_Si_fit">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="th_0">Ángulo de incidencia (°)</label>
+                        <input type="number" id="th_0" value="69.5" min="0" max="89" step="0.1">
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
+                    <h3 style="margin-bottom: 0.75rem;">Optimización</h3>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="num_starts">Semillas (starts)</label>
+                            <input type="number" id="num_starts" value="100" min="1" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="num_epochs">Épocas</label>
+                            <input type="number" id="num_epochs" value="200" min="1" step="1">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lr">Learning Rate</label>
+                        <input type="number" id="lr" value="1.5" min="0.001" step="0.1">
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="use_cuda" checked>
+                        <label for="use_cuda">🖥️ Usar tarjeta gráfica (CUDA)</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button class="btn-submit" id="btn-submit" type="button">
+                <span class="spinner"></span>
+                <span class="btn-text">🚀 Ejecutar Ajuste Elipsométrico</span>
+            </button>
+
+            <!-- Results Section -->
+            <div class="results-section hidden" id="results-section">
+                <div class="card" style="margin-bottom: 1.5rem;">
+                    <div class="card-header">
+                        <h2><span class="icon">📊</span> Curvas Is / Ic vs λ</h2>
+                        <small id="result-id-badge"></small>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-is-ic"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2><span class="icon">📐</span> Parámetros Óptimos</h2>
+                    </div>
+                    <div class="results-grid" id="results-metrics"></div>
+                    <h3 style="margin: 1rem 0 0.75rem;">Capas con Modelo</h3>
+                    <table class="thicknesses-table">
+                        <thead>
+                            <tr>
+                                <th>Capa</th>
+                                <th>Material</th>
+                                <th>Modelo</th>
+                                <th>Espesor (nm)</th>
+                                <th>Parámetros</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-layers"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- TAB: HISTORIAL                                 -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="tab-history" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2><span class="icon">📋</span> Simulaciones Anteriores</h2>
+                    <button class="tab-btn" id="btn-refresh-history" style="padding:0.35rem 1rem; font-size:0.8rem;">↻
+                        Actualizar</button>
+                </div>
+                <div id="history-container">
+                    <div class="empty-state">
+                        <div class="icon">📭</div>
+                        <p>Selecciona la pestaña para cargar el historial.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+    <!-- JAVASCRIPT                                         -->
+    <!-- ═══════════════════════════════════════════════════ -->
+    <script>
+        (() => {
+            'use strict';
+
+            // ── Available materials from the catalog ──
+            const STATIC_MATERIALS = [
+                'air', 'Si', 'SiO2', 'GaAs', 'InGaP', 'MgF2', 'vidrio',
+                'Rutilo', 'T1_densa', 'T1_porosa', 'ZnSe', 'AlAs',
+                'Al2O3', 'HfO2', 'SiNx', 'Aluminum'
+            ];
+
+            // Model types available for parametric layers
+            const MODEL_TYPES = [
+                { value: '', label: 'Estática (de la BD)' },
+                { value: 'cauchy', label: 'Cauchy' },
+                { value: 'cauchy_absorbent', label: 'Cauchy Absorbente' },
+                { value: 'bruggeman', label: 'Bruggeman EMA' },
+            ];
+
+            // Default bounds per model
+            const DEFAULT_BOUNDS = {
+                cauchy: [
+                    { name: 'A', min: 0.0, max: 30.0 },
+                    { name: 'B', min: -30.0, max: 30.0 },
+                    { name: 'C', min: -100.0, max: 100.0 },
+                ],
+                cauchy_absorbent: [
+                    { name: 'A', min: 0.0, max: 30.0 },
+                    { name: 'B', min: -30.0, max: 30.0 },
+                    { name: 'C', min: -100.0, max: 100.0 },
+                    { name: 'D', min: 0.0, max: 100.0 },
+                    { name: 'E', min: -30.0, max: 30.0 },
+                    { name: 'F', min: -100.0, max: 100.0 },
+                ],
+                bruggeman: [
+                    { name: 'f', min: 0.0, max: 1.0 },
+                ],
+            };
+
+            const API_BASE = window.location.origin;
+            let layerCounter = 0;
+            let authToken = localStorage.getItem('ellipsometry_token') || null;
+            let userEmail = localStorage.getItem('ellipsometry_email') || null;
+            let chartInstance = null;
+
+            // ── Auth helpers ───────────────────────────────────────
+            function authHeaders() {
+                return {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`,
+                };
+            }
+
+            function checkAuth() {
+                const modal = document.getElementById('auth-modal');
+                const bar = document.getElementById('auth-bar');
+                if (authToken) {
+                    modal.classList.add('hidden');
+                    bar.style.display = 'flex';
+                    document.getElementById('display-email').textContent = userEmail || '';
+                } else {
+                    modal.classList.remove('hidden');
+                    bar.style.display = 'none';
+                }
+            }
+
+            let isRegisterMode = false;
+
+            document.getElementById('btn-toggle-register').addEventListener('click', () => {
+                isRegisterMode = !isRegisterMode;
+                document.getElementById('auth-title').textContent = isRegisterMode ? '📝 Registrarse' : '🔐 Iniciar Sesión';
+                document.getElementById('btn-login').textContent = isRegisterMode ? 'Crear Cuenta' : 'Iniciar Sesión';
+                document.getElementById('btn-toggle-register').textContent = isRegisterMode
+                    ? '¿Ya tienes cuenta? Iniciar Sesión'
+                    : '¿No tienes cuenta? Registrarse';
+                document.getElementById('auth-error').textContent = '';
+            });
+
+            document.getElementById('btn-login').addEventListener('click', async () => {
+                const email = document.getElementById('auth-email').value.trim();
+                const password = document.getElementById('auth-password').value;
+                const errEl = document.getElementById('auth-error');
+                errEl.textContent = '';
+
+                if (!email || !password) {
+                    errEl.textContent = 'Ingresa email y contraseña';
+                    return;
+                }
+
+                try {
+                    if (isRegisterMode) {
+                        // Register first
+                        const regRes = await fetch(`${API_BASE}/register`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password }),
+                        });
+                        if (!regRes.ok) {
+                            const err = await regRes.json();
+                            throw new Error(err.detail || 'Error al registrar');
+                        }
+                    }
+
+                    // Login (OAuth2 form)
+                    const formData = new URLSearchParams();
+                    formData.append('username', email);
+                    formData.append('password', password);
+
+                    const res = await fetch(`${API_BASE}/token`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: formData,
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.detail || 'Credenciales incorrectas');
+                    }
+
+                    const data = await res.json();
+                    authToken = data.access_token;
+                    userEmail = email;
+                    localStorage.setItem('ellipsometry_token', authToken);
+                    localStorage.setItem('ellipsometry_email', userEmail);
+                    checkAuth();
+                    showToast('✅ Sesión iniciada correctamente', 'success');
+
+                } catch (e) {
+                    errEl.textContent = e.message;
+                }
+            });
+
+            document.getElementById('btn-logout').addEventListener('click', () => {
+                authToken = null;
+                userEmail = null;
+                localStorage.removeItem('ellipsometry_token');
+                localStorage.removeItem('ellipsometry_email');
+                checkAuth();
+            });
+
+            // ── Tab Switching ──────────────────────────────────────
+            document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+
+                    if (btn.dataset.tab === 'history') loadHistory();
+                });
+            });
+
+            // ── Layer Management ───────────────────────────────────
+            function createLayerCard(defaults = {}) {
+                layerCounter++;
+                const idx = layerCounter;
+                const mat = defaults.name || 'air';
+                const modelType = defaults.modelType || '';
+                const dMin = defaults.d_min ?? 10;
+                const dMax = defaults.d_max ?? 100;
+
+                const card = document.createElement('div');
+                card.className = 'layer-card';
+                card.dataset.idx = idx;
+
+                // Build material options
+                const matOptions = STATIC_MATERIALS.map(m =>
+                    `<option value="${m}" ${m === mat ? 'selected' : ''}>${m}</option>`
+                ).join('');
+
+                // Build model type options
+                const modelOptions = MODEL_TYPES.map(mt =>
+                    `<option value="${mt.value}" ${mt.value === modelType ? 'selected' : ''}>${mt.label}</option>`
+                ).join('');
+
+                card.innerHTML = `
+                <div class="layer-header">
+                    <span class="layer-number">Capa ${idx}</span>
+                    <button class="btn-remove-layer" title="Eliminar capa" type="button">✕</button>
+                </div>
+                <div class="layer-fields">
+                    <div class="layer-row-top">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>Material / Nombre</label>
+                            <select class="layer-material">
+                                ${matOptions}
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>Modelo de Dispersión</label>
+                            <select class="layer-model">
+                                ${modelOptions}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="layer-row-thickness thickness-section" style="${modelType ? '' : 'display:none'}">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>Espesor mín (nm)</label>
+                            <input type="number" class="thick-min" value="${dMin}" min="0" step="1">
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label>Espesor máx (nm)</label>
+                            <input type="number" class="thick-max" value="${dMax}" min="0" step="1">
+                        </div>
+                    </div>
+                    <div class="bounds-section" style="display:none">
+                        <!-- bounds inputs inserted dynamically -->
+                    </div>
+                </div>
+            `;
+
+                // Model type change → show/hide bounds and thickness
+                const modelSelect = card.querySelector('.layer-model');
+                modelSelect.addEventListener('change', () => {
+                    updateBoundsSection(card);
+                    updatePreview();
+                });
+
+                // Initialize bounds if model is set
+                if (modelType) {
+                    setTimeout(() => updateBoundsSection(card), 0);
+                }
+
+                // Remove layer
+                card.querySelector('.btn-remove-layer').addEventListener('click', () => {
+                    card.style.animation = 'fadeIn 0.2s ease reverse';
+                    setTimeout(() => {
+                        card.remove();
+                        renumberLayers();
+                        updatePreview();
+                    }, 180);
+                });
+
+                // Update preview on change
+                card.querySelectorAll('select, input').forEach(el => {
+                    el.addEventListener('change', updatePreview);
+                    el.addEventListener('input', updatePreview);
+                });
+
+                return card;
+            }
+
+            function updateBoundsSection(card) {
+                const modelType = card.querySelector('.layer-model').value;
+                const boundsSection = card.querySelector('.bounds-section');
+                const thicknessSection = card.querySelector('.thickness-section');
+
+                if (!modelType) {
+                    // Static layer: hide bounds and thickness
+                    boundsSection.style.display = 'none';
+                    boundsSection.innerHTML = '';
+                    thicknessSection.style.display = 'none';
+                    return;
+                }
+
+                // Show thickness fields for parametric layers
+                thicknessSection.style.display = 'grid';
+
+                const params = DEFAULT_BOUNDS[modelType];
+                if (!params || params.length === 0) {
+                    boundsSection.style.display = 'none';
+                    boundsSection.innerHTML = '';
+                    return;
+                }
+
+                boundsSection.style.display = 'block';
+                let html = '<h4>Límites de Parámetros</h4>';
+                params.forEach((p, i) => {
+                    html += `
+                    <div class="bounds-row">
+                        <span class="param-label">${p.name}</span>
+                        <input type="number" class="bound-min" data-param="${i}" value="${p.min}" step="0.01" placeholder="min">
+                        <input type="number" class="bound-max" data-param="${i}" value="${p.max}" step="0.01" placeholder="max">
+                    </div>
+                `;
+                });
+                boundsSection.innerHTML = html;
+            }
+
+            function renumberLayers() {
+                const cards = document.querySelectorAll('#layers-container .layer-card');
+                cards.forEach((card, i) => {
+                    card.querySelector('.layer-number').textContent = `Capa ${i + 1}`;
+                });
+            }
+
+            // ── Stack Preview ──────────────────────────────────────
+            function updatePreview() {
+                const container = document.getElementById('preview-layers');
+                const layers = getLayersData();
+
+                let html = '';
+                layers.forEach((l, i) => {
+                    let cls, desc;
+                    if (!l.modelType) {
+                        cls = 'static';
+                        desc = 'estática';
+                    } else if (l.modelType === 'bruggeman') {
+                        cls = 'bruggeman';
+                        desc = `Bruggeman · ${l.d_min}–${l.d_max} nm`;
+                    } else {
+                        cls = 'parametric';
+                        desc = `${l.modelType} · ${l.d_min}–${l.d_max} nm`;
+                    }
+                    html += `<div class="stack-layer-bar ${cls}">${l.name} — ${desc}</div>`;
+                });
+
+                if (layers.length === 0) {
+                    html = '<div style="text-align:center; color:var(--text-muted); font-size:0.8rem; padding:0.5rem;">Agrega capas al stack</div>';
+                }
+
+                container.innerHTML = html;
+            }
+
+            // ── Data Extraction ────────────────────────────────────
+            function getLayersData() {
+                const cards = document.querySelectorAll('#layers-container .layer-card');
+                return Array.from(cards).map(card => {
+                    const modelType = card.querySelector('.layer-model').value;
+                    const data = {
+                        name: card.querySelector('.layer-material').value,
+                        modelType: modelType,
+                        d_min: parseFloat(card.querySelector('.thick-min').value) || 0,
+                        d_max: parseFloat(card.querySelector('.thick-max').value) || 0,
+                        bounds: [],
+                    };
+
+                    if (modelType) {
+                        // Collect bounds
+                        const minInputs = card.querySelectorAll('.bound-min');
+                        const maxInputs = card.querySelectorAll('.bound-max');
+                        for (let i = 0; i < minInputs.length; i++) {
+                            data.bounds.push([
+                                parseFloat(minInputs[i].value),
+                                parseFloat(maxInputs[i].value),
+                            ]);
+                        }
+                    }
+
+                    return data;
+                });
+            }
+
+            function buildPayload() {
+                const layers = getLayersData();
+                const stackName = document.getElementById('nombre').value.trim() || 'Sin nombre';
+
+                // Build SimParam-compatible payload
+                const apiLayers = layers.map(l => {
+                    const layer = {
+                        name: l.name,
+                        model: null,
+                        d_min: null,
+                        d_max: null,
+                    };
+
+                    if (l.modelType) {
+                        layer.model = {
+                            model_type: l.modelType,
+                            bounds: l.bounds.length > 0 ? l.bounds : null,
+                        };
+                        layer.d_min = l.d_min;
+                        layer.d_max = l.d_max;
+                    }
+
+                    return layer;
+                });
+
+                return {
+                    num_starts: parseInt(document.getElementById('num_starts').value) || 100,
+                    num_epochs: parseInt(document.getElementById('num_epochs').value) || 200,
+                    lr: parseFloat(document.getElementById('lr').value) || 1.5,
+                    use_cuda: document.getElementById('use_cuda').checked,
+                    th_0: parseFloat(document.getElementById('th_0').value) || 69.5,
+                    stack: {
+                        name: stackName,
+                        layers: apiLayers,
+                    },
+                };
+            }
+
+            // ── Submit Simulation ──────────────────────────────────
+            async function submitSimulation() {
+                if (!authToken) {
+                    showToast('⚠️ Debes iniciar sesión primero', 'error');
+                    checkAuth();
+                    return;
+                }
+
+                const btn = document.getElementById('btn-submit');
+                const layers = getLayersData();
+
+                if (layers.length === 0) {
+                    showToast('Agrega al menos una capa al stack', 'error');
+                    return;
+                }
+
+                // Validate: at least one parametric layer
+                const hasParametric = layers.some(l => l.modelType);
+                if (!hasParametric) {
+                    showToast('⚠️ Necesitas al menos una capa con modelo (Cauchy, etc.) para ajustar', 'error');
+                    return;
+                }
+
+                const payload = buildPayload();
+
+                btn.classList.add('loading');
+                btn.disabled = true;
+                btn.querySelector('.btn-text').textContent = 'Ajustando... esto puede tomar varios minutos';
+                document.getElementById('results-section').classList.add('hidden');
+
+                try {
+                    const res = await fetch(`${API_BASE}/simular_stack`, {
+                        method: 'POST',
+                        headers: authHeaders(),
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (res.status === 401) {
+                        authToken = null;
+                        localStorage.removeItem('ellipsometry_token');
+                        checkAuth();
+                        throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
+                    }
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.detail || `Error HTTP ${res.status}`);
+                    }
+
+                    const data = await res.json();
+                    showResults(data.stack);
+                    showToast('✅ Ajuste completado exitosamente', 'success');
+
+                } catch (e) {
+                    showToast(`❌ ${e.message}`, 'error');
+                } finally {
+                    btn.classList.remove('loading');
+                    btn.disabled = false;
+                    btn.querySelector('.btn-text').textContent = '🚀 Ejecutar Ajuste Elipsométrico';
+                }
+            }
+
+            // ── Show Results ───────────────────────────────────────
+            function showResults(stack) {
+                const section = document.getElementById('results-section');
+                section.classList.remove('hidden');
+
+                document.getElementById('result-id-badge').textContent = `ID: ${stack.id}`;
+
+                // Metrics: count layers, show stack name
+                const parametricLayers = (stack.capas || []).filter(l => l.model);
+                const metricsHtml = `
+                <div class="result-metric">
+                    <div class="value">${stack.id}</div>
+                    <div class="label">ID en Base de Datos</div>
+                </div>
+                <div class="result-metric">
+                    <div class="value">${stack.nombre || stack.name || '—'}</div>
+                    <div class="label">Nombre</div>
+                </div>
+                <div class="result-metric">
+                    <div class="value">${(stack.capas || []).length}</div>
+                    <div class="label">Capas Totales</div>
+                </div>
+                <div class="result-metric">
+                    <div class="value">${parametricLayers.length}</div>
+                    <div class="label">Capas Ajustadas</div>
+                </div>
+            `;
+                document.getElementById('results-metrics').innerHTML = metricsHtml;
+
+                // Layers table
+                const tbody = document.getElementById('results-layers');
+                if (stack.capas && stack.capas.length > 0) {
+                    let rows = '';
+                    stack.capas.forEach((layer, i) => {
+                        const paramsStr = layer.params && Object.keys(layer.params).length > 0
+                            ? Object.entries(layer.params).map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(4) : v}`).join(', ')
+                            : '—';
+                        rows += `
+                        <tr>
+                            <td>${i + 1}</td>
+                            <td>${layer.name}</td>
+                            <td>${layer.model || 'estática'}</td>
+                            <td>${layer.thickness != null ? layer.thickness.toFixed(2) : '—'}</td>
+                            <td style="font-size:0.8rem; font-family:monospace;">${paramsStr}</td>
+                        </tr>
+                    `;
+                    });
+                    tbody.innerHTML = rows;
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Sin datos</td></tr>';
+                }
+
+                // Chart: Is and Ic vs wavelength
+                renderChart(stack.wl_exp, stack.best_Is, stack.best_Ic, stack.Is_exp, stack.Ic_exp);
+
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            function renderChart(wl_exp, best_Is, best_Ic, Is_exp, Ic_exp) {
+                const ctx = document.getElementById('chart-is-ic').getContext('2d');
+
+                if (chartInstance) {
+                    chartInstance.destroy();
+                }
+
+                if (!wl_exp || !best_Is || !best_Ic) return;
+
+                const datasets = [
+                    {
+                        label: 'Is (ajuste)',
+                        data: best_Is,
+                        borderColor: '#00d4ff',
+                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.3,
+                        fill: false,
+                    },
+                    {
+                        label: 'Ic (ajuste)',
+                        data: best_Ic,
+                        borderColor: '#7c3aed',
+                        backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.3,
+                        fill: false,
+                    }
+                ];
+
+                // Añadir datasets experimentales si están disponibles
+                if (Is_exp && Ic_exp) {
+                    datasets.push({
+                        label: 'Is (exp)',
+                        data: Is_exp,
+                        borderColor: 'rgba(0, 212, 255, 0.4)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        tension: 0.3,
+                        fill: false,
+                    });
+                    datasets.push({
+                        label: 'Ic (exp)',
+                        data: Ic_exp,
+                        borderColor: 'rgba(124, 58, 237, 0.4)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        tension: 0.3,
+                        fill: false,
+                    });
+                }
+
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: wl_exp.map(w => w.toFixed(0)),
+                        datasets: datasets,
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index',
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#94a3b8',
+                                    font: { family: 'Inter', size: 12 },
+                                },
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 20, 41, 0.95)',
+                                titleColor: '#e2e8f0',
+                                bodyColor: '#94a3b8',
+                                borderColor: 'rgba(255,255,255,0.1)',
+                                borderWidth: 1,
+                                padding: 10,
+                                titleFont: { family: 'Inter' },
+                                bodyFont: { family: 'Inter' },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Longitud de onda (nm)',
+                                    color: '#94a3b8',
+                                    font: { family: 'Inter', size: 12 },
+                                },
+                                ticks: {
+                                    color: '#64748b',
+                                    font: { family: 'Inter', size: 10 },
+                                    maxTicksLimit: 15,
+                                },
+                                grid: { color: 'rgba(255,255,255,0.04)' },
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Valor',
+                                    color: '#94a3b8',
+                                    font: { family: 'Inter', size: 12 },
+                                },
+                                ticks: {
+                                    color: '#64748b',
+                                    font: { family: 'Inter', size: 10 },
+                                },
+                                grid: { color: 'rgba(255,255,255,0.04)' },
+                            },
+                        },
+                    },
+                });
+            }
+
+            // ── History ────────────────────────────────────────────
+            async function loadHistory() {
+                if (!authToken) {
+                    showToast('⚠️ Debes iniciar sesión primero', 'error');
+                    return;
+                }
+
+                const container = document.getElementById('history-container');
+                container.innerHTML = '<div class="empty-state"><p>Cargando...</p></div>';
+
+                try {
+                    const res = await fetch(`${API_BASE}/mostrar_resultados`, {
+                        headers: authHeaders(),
+                    });
+
+                    if (res.status === 401) {
+                        authToken = null;
+                        localStorage.removeItem('ellipsometry_token');
+                        checkAuth();
+                        throw new Error('Sesión expirada');
+                    }
+
+                    if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+                    const data = await res.json();
+
+                    if (!data || data.length === 0) {
+                        container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No hay simulaciones registradas aún.</p></div>';
+                        return;
+                    }
+
+                    let html = '<div class="history-list">';
+                    data.forEach(item => {
+                        const numLayers = (item.capas || []).length;
+                        const parametric = (item.capas || []).filter(l => l.model).length;
+                        html += `
+                        <div class="history-item" data-id="${item.id}">
+                            <span class="id-badge">#${item.id}</span>
+                            <span class="name">${item.nombre || 'Sin nombre'}</span>
+                            <span class="date">${item.fecha || ''}</span>
+                            <span class="layers-count">${numLayers} capas · ${parametric} ajustadas</span>
+                            <div class="history-actions">
+                                <button class="btn-download" data-id="${item.id}" title="Descargar resultados">⬇ TXT</button>
+                            </div>
+                        </div>
+                    `;
+                    });
+                    html += '</div>';
+                    container.innerHTML = html;
+
+                    // Click item to view detail
+                    container.querySelectorAll('.history-item').forEach(el => {
+                        el.addEventListener('click', (e) => {
+                            // Don't trigger if clicking download button
+                            if (e.target.closest('.btn-download')) return;
+                            loadDetail(el.dataset.id);
+                        });
+                    });
+
+                    // Download buttons
+                    container.querySelectorAll('.btn-download').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            downloadResult(btn.dataset.id);
+                        });
+                    });
+
+                } catch (e) {
+                    container.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar: ${e.message}</p></div>`;
+                }
+            }
+
+            async function loadDetail(id) {
+                try {
+                    const res = await fetch(`${API_BASE}/mostrar_resultados/${id}`, {
+                        headers: authHeaders(),
+                    });
+                    if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+                    const data = await res.json();
+
+                    // Switch to simulator tab and show results
+                    document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+                    document.querySelector('.tab-btn[data-tab="simulator"]').classList.add('active');
+                    document.getElementById('tab-simulator').classList.add('active');
+
+                    showResults(data);
+
+                } catch (e) {
+                    showToast(`Error al cargar detalle: ${e.message}`, 'error');
+                }
+            }
+
+            async function downloadResult(id) {
+                try {
+                    const res = await fetch(`${API_BASE}/descargar_resultados/${id}`, {
+                        headers: { 'Authorization': `Bearer ${authToken}` },
+                    });
+                    if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `resultados_stack_${id}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    showToast('📥 Archivo descargado', 'success');
+
+                } catch (e) {
+                    showToast(`Error al descargar: ${e.message}`, 'error');
+                }
+            }
+
+            // ── Toast Notification ─────────────────────────────────
+            function showToast(message, type = 'success') {
+                const existing = document.querySelector('.toast');
+                if (existing) existing.remove();
+
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                toast.textContent = message;
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.animation = 'toastIn 0.3s ease reverse';
+                    setTimeout(() => toast.remove(), 280);
+                }, 5000);
+            }
+
+            // ── Event Listeners ────────────────────────────────────
+            document.getElementById('btn-add-layer').addEventListener('click', () => {
+                const container = document.getElementById('layers-container');
+                container.appendChild(createLayerCard());
+                updatePreview();
+            });
+
+            document.getElementById('btn-submit').addEventListener('click', submitSimulation);
+
+            document.getElementById('btn-refresh-history').addEventListener('click', loadHistory);
+
+            // Allow Enter key in auth modal
+            document.getElementById('auth-password').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') document.getElementById('btn-login').click();
+            });
+
+            // ── Initialize with default stack ──────────────────────
+            function init() {
+                checkAuth();
+
+                // Default stack: air / TiO2(Cauchy) / Si — typical ellipsometry sample
+                const defaults = [
+                    { name: 'air', modelType: '', d_min: 0, d_max: 0 },
+                    { name: 'air', modelType: 'cauchy', d_min: 10, d_max: 500 },
+                    { name: 'Si', modelType: '', d_min: 0, d_max: 0 },
+                ];
+
+                const container = document.getElementById('layers-container');
+                defaults.forEach(d => container.appendChild(createLayerCard(d)));
+                updatePreview();
+            }
+
+            init();
+        })();
+    </script>
+</body>
+
+</html>

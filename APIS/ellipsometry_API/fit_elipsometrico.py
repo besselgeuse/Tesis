@@ -118,7 +118,8 @@ def ajuste_elipsometrico(data_path, skiprows, layer_names, layer_models, d_bound
             print(f"=== Cargando resultados desde caché: {cache_file} ===")
             with open(cache_file, 'rb') as f:
                 cached = pickle.load(f)
-            return cached['best_thicknesses'], cached['best_Is'], cached['best_Ic'], cached['best_params'], cached['wl_exp']
+            return (cached['best_thicknesses'], cached['best_Is'], cached['best_Ic'], 
+                    cached['best_params'], cached['wl_exp'], cached['Is_exp'], cached['Ic_exp'])
     
     # ── CARGAR DATOS EXPERIMENTALES ──
     wl_exp, psi_deg, delta_deg = np.loadtxt(data_path, skiprows=skiprows, unpack=True)
@@ -202,10 +203,12 @@ def ajuste_elipsometrico(data_path, skiprows, layer_names, layer_models, d_bound
                 'best_Ic': best_Ic,
                 'best_params': best_params,
                 'wl_exp': wl_exp,
+                'Is_exp': Is_exp,
+                'Ic_exp': Ic_exp,
             }, f)
         print(f"=== Resultados guardados en caché: {cache_file} ===")
 
-    return best_thicknesses, best_Is, best_Ic, best_params, wl_exp
+    return best_thicknesses, best_Is, best_Ic, best_params, wl_exp, Is_exp, Ic_exp
 
 def transform_I_to_psi_delta(Is, Ic):
     """Convierte parámetros Is, Ic a psi (grados) y delta (grados)."""

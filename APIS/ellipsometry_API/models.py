@@ -14,6 +14,9 @@ class Stack(Base):
     layers = Column(JSON, nullable=False)
     best_Is = Column(JSON)
     best_Ic = Column(JSON)
+    wl_exp = Column(JSON)  # Para guardar la lista de longitudes de onda experimental
+    Is_exp = Column(JSON)
+    Ic_exp = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relación con el usuario dueño del stack

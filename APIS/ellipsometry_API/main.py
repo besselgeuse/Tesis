@@ -1,4 +1,6 @@
 from fastapi import FastAPI, status, HTTPException, Depends
+from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from database import engine, SessionLocal
 from typing import Annotated, List, Tuple, Optional
@@ -7,6 +9,7 @@ from fit_elipsometrico import ajuste_elipsometrico
 import models
 import json
 import jwt
+import io
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
@@ -15,6 +18,14 @@ ALGORITHM = "HS256"
 
 # inicializamos la app
 app = FastAPI()
+
+# Servir archivos estáticos
+import os
+API_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(API_DIR, 'static')
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
 
 #creo la tabla
 models.Base.metadata.create_all(bind=engine)
@@ -84,6 +95,9 @@ class SimParam(BaseModel):
     th_0: float = 69.5
     stack: Stack
 
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/static/index.html")
 
 @app.post('/register', status_code=status.HTTP_201_CREATED)
 def registrar_usuario(usercreate: UserCreate, db: db_dependency):
@@ -135,7 +149,7 @@ async def simular_stack(
         d_bounds = [(layer.d_min, layer.d_max) for layer in registro.stack.layers[1:-1]]
 
         # 2. Ejecutar la simulación con Autograd
-        best_thicknesses, best_Is, best_Ic, best_params, wl_exp = ajuste_elipsometrico(
+        best_thicknesses, best_Is, best_Ic, best_params, wl_exp, Is_exp, Ic_exp = ajuste_elipsometrico(
             data_path='./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt',
             skiprows=5,
             layer_names=layer_names,
@@ -174,22 +188,36 @@ async def simular_stack(
                     "thickness": t_val,
                     "params": params_cleaned
                 })
-                o_idx += 1
-        
+                o_idx += 1        
         # 4. Crear el modelo de base de datos
         stack_db = models.Stack(
             name=registro.stack.name,
             layers=layer_db,
             best_Is=best_Is.tolist(),
             best_Ic=best_Ic.tolist(),
+            wl_exp=wl_exp.tolist(),  # Guardar la lista de longitudes de onda experimental
+            Is_exp=Is_exp.tolist(),
+            Ic_exp=Ic_exp.tolist(),
             user_id=usuario_actual.id
         )
 
         db.add(stack_db)
+        db.flush()  # Generar id autoincremental
         db.commit()
 
         return {
-            "message": "Stack registrado exitosamente"
+            "message": "Stack registrado exitosamente",
+            "stack": {
+                "id": stack_db.id,
+                "nombre": stack_db.name,
+                "capas": stack_db.layers,
+                "best_Is": stack_db.best_Is,
+                "best_Ic": stack_db.best_Ic,
+                "wl_exp": stack_db.wl_exp,
+                "Is_exp": stack_db.Is_exp,
+                "Ic_exp": stack_db.Ic_exp,
+                "fecha": str(stack_db.created_at)
+            }
         }
 
     except Exception as e:
@@ -210,6 +238,9 @@ async def obtener_resultados(
             "capas": s.layers,
             "best_Is": s.best_Is,
             "best_Ic": s.best_Ic,
+            "wl_exp": s.wl_exp,
+            "Is_exp": s.Is_exp,
+            "Ic_exp": s.Ic_exp,
             "fecha": str(s.created_at),
         })
     return resultado
@@ -223,7 +254,7 @@ async def obtener_resultados_id(
     """Retorna un stack registrado del usuario autenticado por ID."""
     stack = db.query(models.Stack).filter(models.Stack.id == id, models.Stack.user_id == usuario_actual.id).first()
     if not stack:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stack no encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stack no encontrado o no tienes permiso para verlo")
         
     return {
         "id": stack.id,
@@ -231,5 +262,53 @@ async def obtener_resultados_id(
         "capas": stack.layers,
         "best_Is": stack.best_Is,
         "best_Ic": stack.best_Ic,
+        "wl_exp": stack.wl_exp,
+        "Is_exp": stack.Is_exp,
+        "Ic_exp": stack.Ic_exp,
         "fecha": str(stack.created_at),
     }
+
+@app.get('/descargar_resultados/{id}', status_code=status.HTTP_200_OK)
+async def descargar_resultados(
+    id: int, 
+    db: db_dependency, 
+    usuario_actual: Annotated[models.User, Depends(obtener_usuario_actual)]
+):
+    stack = db.query(models.Stack).filter(models.Stack.id == id, models.Stack.user_id == usuario_actual.id).first()
+    if not stack:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stack no encontrado")
+    
+    stream = io.StringIO()
+    stream.write(f"Resultados del Stack: {stack.name}\n")
+    stream.write(f"Fecha: {stack.created_at}\n")
+    stream.write(f"ID: {stack.id}\n\n")
+    stream.write("información del stack\n")
+    stream.write("=====================\n\n")
+    
+    for layer in stack.layers:
+        stream.write(f"Material: {layer['name']}\n")
+        stream.write(f"Modelo de Dispersión: {layer.get('model', 'N/A')}\n")
+        if layer.get('thickness') is not None:
+            stream.write(f"Espesor: {layer['thickness']:.2f} nm\n")
+        if layer.get('params'):
+            stream.write(f"Parámetros del Modelo: {layer['params']}\n")
+        stream.write("\n")
+        
+    stream.write("=====================\n\n")
+    stream.write("wl,best_Ic,best_Is,Ic_exp,Is_exp\n")
+    if stack.Ic_exp and stack.Is_exp:
+        for wl, best_ic, best_is, ic_exp, is_exp in zip(stack.wl_exp, stack.best_Ic, stack.best_Is, stack.Ic_exp, stack.Is_exp):
+            stream.write(f"{wl},{best_ic},{best_is},{ic_exp},{is_exp}\n")
+    else:
+        for wl, best_ic, best_is in zip(stack.wl_exp, stack.best_Ic, stack.best_Is):
+            stream.write(f"{wl},{best_ic},{best_is},,\n")
+
+    file_content = stream.getvalue()
+    stream.close()
+    
+    
+    return StreamingResponse(
+        io.BytesIO(file_content.encode('utf-8')),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename=resultados_stack_{stack.id}.txt"}
+    )

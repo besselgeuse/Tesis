@@ -19,7 +19,7 @@ import torch.optim as optim
 
 # 1. Definimos la ruta exacta al archivo tmm_core.py de Simon
 
-tmm_path = r".\tmm_core.py"
+tmm_path = r"./tmm_core.py"
 
 # 2. Cargamos el módulo manualmente desde esa dirección
 spec = importlib.util.spec_from_file_location("tmm", tmm_path)
@@ -642,13 +642,13 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
                 if model_type == 'cauchy':
                     num_p = 3
                     # A en [1.0, 3.0], B y C en [-1.0, 1.0]
-                    default_bounds = [(1.0, 3.0), (-1.0, 1.0), (-1.0, 1.0)]
-                    default_initial = [1.5, 0.0, 0.0]
+                    default_bounds = [(0.0, 30.0), (-30.0, 30.0), (-100.0, 100.0)]
+                    default_initial = [15.0, 0.0, 0.0]
                 elif model_type == 'cauchy_absorbent':
                     num_p = 6
                     # A en [1.0, 3.0], B y C en [-1.0, 1.0], D en [0.0, 2.0], E y F en [-1.0, 1.0]
-                    default_bounds = [(1.0, 3.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0)]
-                    default_initial = [1.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    default_bounds = [(0.0, 30.0), (-30.0, 30.0), (-100.0, 100.0), (0.0, 100.0), (-30.0, 30.0), (-100.0, 100.0)]
+                    default_initial = [15.0, 0.0, 0.0, 0.0, 0.0, 0.0]
                 elif model_type == 'bruggeman':
                     # Extraer configuración de fracción de aire
                     if isinstance(model, dict):
