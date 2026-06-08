@@ -12,12 +12,12 @@ Este codigo tiene el objetivo de fitear parametros elipsometricos de peliculas d
 El proyecto está completamente dockerizado, de modo que no requiere configuraciones locales de bases de datos.
 
 1. **Clonar el repositorio:**
-   - entrar a la terminal
- - git clone -b APIS https://github.com/besselgeuse/Tesis.git
-  - cd Tesis/ellipsometry_API
-  - docker compose up --build
-  - Entrar al http://localhost:8000 en el navegador
-  - Listo!
+- entrar a la terminal
+- git clone -b APIS https://github.com/besselgeuse/Tesis.git
+- cd APIS/ellipsometry_API
+- docker compose up --build
+- Entrar al http://localhost:8000 en el navegador
+- Listo!
  
 ## Modo de uso
 <img width="1007" height="939" alt="fit_ellipsometrico" src="https://github.com/user-attachments/assets/aaefcc48-baa8-40d5-a5db-e18070665a45" />
