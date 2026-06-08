@@ -26,7 +26,7 @@ El proyecto está completamente dockerizado, de modo que no requiere configuraci
 - Es muy importante que el primer elemento siempre sea el aire y el ultimo un semiconductor como el Silicio, y que ambos sean estáticos.
 - Si se elige el modelo de Bruggeman el parametro a ajuster es la fracción de aire que tiene el material.
 - En la pestaña de parametros se puede ajustar el angulo de incidencia con el que fue medida la muestra, asi como los parametros de aprendizaje del autograd.
-- Si bien tiene la opción de usar tecnologia CUDA en la versión dockerizada no está disponible puesto que se instaló una libreria de pytorch mas liviana que solo trabaja con la cpu.
+- Si bien tiene la opción de usar tecnologia CUDA en la versión dockerizada no está disponible puesto que se instaló una libreria de pytorch mas liviana que solo trabaja con la cpu. De lo contrario se pueden descargar manualmente las librerias del requirements.txt para usar "uvicorn main:app --reload" directamente desde la consola.
 
 ## Archivos
 En la pestaña de historial quedarán guardados los archivos con los parametros y datos ajustados para descargar en formato txt. Cada usuario tendra acceso unicamente a sus propias mediciones.
