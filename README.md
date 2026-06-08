@@ -21,6 +21,7 @@ El proyecto está completamente dockerizado, de modo que no requiere configuraci
  
 ## Modo de uso
 <img width="1007" height="939" alt="fit_ellipsometrico" src="https://github.com/user-attachments/assets/aaefcc48-baa8-40d5-a5db-e18070665a45" />
+
 - En la pestaña de stack optico se eligen las capas de materiales que conformaran la celda y sus correspondientes modelos de dispersión,en caso de no querer usar un modelo simplemente seleccionar estático.
 - Es muy importante que el primer elemento siempre sea el aire y el ultimo un semiconductor como el Silicio, y que ambos sean estáticos.
 - Si se elige el modelo de Bruggeman el parametro a ajuster es la fracción de aire que tiene el material.
