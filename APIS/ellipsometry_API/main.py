@@ -141,16 +141,20 @@ async def simular_stack(
             if layer.model is None:
                 layer_models.append(None)
             else:
-                layer_models.append({
-                    "model": layer.model.model_type,
-                    "bounds": layer.model.bounds
-                })
+                model_dict = {
+                    "model": layer.model.model_type
+                }
+                if layer.model.model_type == 'bruggeman':
+                    model_dict["f_bounds"] = layer.model.bounds
+                else:
+                    model_dict["bounds"] = layer.model.bounds
+                layer_models.append(model_dict)
         
         d_bounds = [(layer.d_min, layer.d_max) for layer in registro.stack.layers[1:-1]]
 
         # 2. Ejecutar la simulación con Autograd
         best_thicknesses, best_Is, best_Ic, best_params, wl_exp, Is_exp, Ic_exp = ajuste_elipsometrico(
-            data_path='./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt',
+            data_path='./Datos-28-5/TiO2_Si_Sputtering_muestra2_sincinta.txt',
             skiprows=5,
             layer_names=layer_names,
             layer_models=layer_models,
@@ -178,9 +182,16 @@ async def simular_stack(
                 # Capa parametrizada y optimizada
                 t_val = float(best_thicknesses[o_idx])
                 
-                # Extraer parámetros de Cauchy (A, B, C)
-                sub_dict = best_params[name]
-                params_cleaned = {k: float(v) for k, v in sub_dict.items() if k != 'model'}
+                # Extraer parámetros (A, B, C o f_air, linked_to) de forma segura y libre de colisiones
+                sub_dict = best_params.get(idx) or best_params.get(name, {})
+                params_cleaned = {}
+                for k, v in sub_dict.items():
+                    if k == 'model':
+                        continue
+                    try:
+                        params_cleaned[k] = float(v)
+                    except (ValueError, TypeError):
+                        params_cleaned[k] = v
                 
                 layer_db.append({
                     "name": name,

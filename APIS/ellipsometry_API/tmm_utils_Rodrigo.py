@@ -661,8 +661,12 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
                     if f_bounds is not None:
                         # f_air es optimizable
                         num_p = 1
-                        default_bounds = [tuple(f_bounds)]
-                        default_initial = [sum(f_bounds) / 2.0]
+                        if isinstance(f_bounds[0], (list, tuple)):
+                            fb = f_bounds[0]
+                        else:
+                            fb = f_bounds
+                        default_bounds = [tuple(fb)]
+                        default_initial = [(fb[0] + fb[1]) / 2.0]
                     else:
                         # f_air es fijo
                         num_p = 0
@@ -958,14 +962,14 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
                     p_best_phys.append(p_phys.item())
                     
                 if model_type == 'cauchy':
-                    best_params[layer_name] = {
+                    layer_params = {
                         'model': 'cauchy',
                         'A': p_best_phys[0],
                         'B': p_best_phys[1],
                         'C': p_best_phys[2]
                     }
                 elif model_type == 'cauchy_absorbent':
-                    best_params[layer_name] = {
+                    layer_params = {
                         'model': 'cauchy_absorbent',
                         'A': p_best_phys[0],
                         'B': p_best_phys[1],
@@ -990,7 +994,10 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
                     else:
                         brugg_info['f_air'] = d_lay.get('f_air', 0.5)
                         brugg_info['f_optimized'] = False
-                    best_params[layer_name] = brugg_info
+                    layer_params = brugg_info
+
+                best_params[layer_name] = layer_params
+                best_params[idx] = layer_params
                     
     print(f"\n¡Optimización elipsométrica completada!")
     print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
@@ -998,6 +1005,8 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
     if is_parametric:
         print("Parámetros de dispersión óptimos:")
         for name, params in best_params.items():
+            if isinstance(name, int):
+                continue
             print(f"  Material: {name} ({params['model']})")
             for k, val in params.items():
                 if k != 'model':

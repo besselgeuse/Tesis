@@ -6,14 +6,20 @@ import matplotlib.pyplot as plt
 from fit_elipsometrico import (
     ajuste_elipsometrico, transform_I_to_psi_delta
 )
-from tmm_utils_Rodrigo import cauchy_fn
+from tmm_utils_Rodrigo import cauchy_fn, n_eff
 #%%
 
 data_path = r'./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt'
 skiprows = 5
-layer_names = ['air', 'TiO2_sputtering','Si']
+layer_names = ['air', 'T1_porosa', 'T1_densa', 'Si']
 layer_models = [
     None,  # air (capa estática)
+    {
+        'model': 'bruggeman',
+        'f_bounds': [
+            (0., 1.)   # f_air
+        ]
+    },
     {
         'model': 'cauchy',
         'bounds': [
@@ -24,14 +30,14 @@ layer_models = [
     },
     None  # Si (capa estática)
 ]
-d_bounds = [(0, 80)] 
+d_bounds = [(0., 40.), (0., 80.)] 
 theta_0 = 69.5
 num_starts = 50
 num_epochs = 50
 lr = 1
 use_cuda = True
 
-best_thicknesses, best_Is, best_Ic, best_params, wl_exp = ajuste_elipsometrico(
+best_thicknesses, best_Is, best_Ic, best_params, wl_exp, Is_exp, Ic_exp = ajuste_elipsometrico(
     data_path, skiprows, layer_names, layer_models, d_bounds, 
     theta_0, num_starts, num_epochs, lr, use_cuda)
     
@@ -61,23 +67,20 @@ ax[1].set_ylabel('Ic')
 
 plt.show()
 # %%
-#Ahora voy a graficar el n_fit
-A,B,C = best_params['TiO2_sputtering']['A'],best_params['TiO2_sputtering']['B'],best_params['TiO2_sputtering']['C']
-n_fit= cauchy_fn(A,B,C)(wl_exp)
-plt.plot(wl_exp,n_fit,label='n_fit')
+# Ahora voy a graficar el n_fit
+A, B, C = best_params['T1_densa']['A'], best_params['T1_densa']['B'], best_params['T1_densa']['C']
+n_fit_densa = cauchy_fn(A, B, C)(wl_exp)
+
+f_air = best_params['T1_porosa']['f_air']
+n_fit_porosa = np.array([n_eff(nb, 1.0, f_air) for nb in n_fit_densa])
+
+plt.figure(figsize=(10, 6))
+plt.plot(wl_exp, n_fit_densa, 'r-', label='n_fit T1_densa (Cauchy)')
+plt.plot(wl_exp, n_fit_porosa.real, 'b--', label='n_fit T1_porosa (Bruggeman)')
 plt.xlabel('Wavelength [nm]')
 plt.ylabel('n')
+plt.title('Índices de Refracción Ajustados')
 plt.legend()
-plt.grid()
-plt.show()
-# %%
-#Ahora voy a graficar el n_fit
-A,B,C = best_params['SiO2']['A'],best_params['SiO2']['B'],best_params['SiO2']['C']
-n_fit= cauchy_fn(A,B,C)(wl_exp)
-plt.plot(wl_exp,n_fit,label='n_fit')
-plt.xlabel('Wavelength [nm]')
-plt.ylabel('n')
-plt.legend()
-plt.grid()
+plt.grid(True)
 plt.show()
 # %%
