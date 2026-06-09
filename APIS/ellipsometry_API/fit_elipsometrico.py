@@ -74,7 +74,7 @@ def _compute_cache_key(data_path, skiprows, layer_names, layer_models, d_bounds,
     return hashlib.sha256(key_str.encode()).hexdigest()[:16]
 
 
-def ajuste_elipsometrico(data_path, skiprows, layer_names, layer_models, d_bounds,
+def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, layer_models=None, d_bounds=None,
                          theta_0=69.5, num_starts=100, num_epochs=150, lr=1.5, 
                          use_cuda=False, cache_path=None, force_recalc=False):    
     """
@@ -179,6 +179,7 @@ def ajuste_elipsometrico(data_path, skiprows, layer_names, layer_models, d_bound
         lams=lams_torch,
         Is_exp=Is_exp_torch,
         Ic_exp=Ic_exp_torch,
+        Data_R=Data_R,
         th_0=th_0_rad,
         num_starts=num_starts,
         num_epochs=num_epochs,

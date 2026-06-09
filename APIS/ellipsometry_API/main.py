@@ -25,7 +25,8 @@ API_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(API_DIR, 'static')
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-
+data_path='./Datos-28-5/TiO2_Si_Sputtering_muestra2_sincinta.txt'
+Data_R='./Datos-04-6/1TIO2-2.txt'
 
 #creo la tabla
 models.Base.metadata.create_all(bind=engine)
@@ -154,7 +155,8 @@ async def simular_stack(
 
         # 2. Ejecutar la simulación con Autograd
         best_thicknesses, best_Is, best_Ic, best_params, wl_exp, Is_exp, Ic_exp = ajuste_elipsometrico(
-            data_path='./Datos-28-5/TiO2_Si_Sputtering_muestra2_sincinta.txt',
+            data_path=data_path,
+            Data_R=Data_R,
             skiprows=5,
             layer_names=layer_names,
             layer_models=layer_models,

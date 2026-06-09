@@ -555,7 +555,7 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
     return {'r': r, 't': t}
 
 
-def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0, 
+def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
                            num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
                            layer_models=None, layer_names=None):
     """
@@ -568,6 +568,7 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
     - lams: Tensor con las longitudes de onda.
     - Is_exp: Tensor PyTorch con Is experimental.
     - Ic_exp: Tensor PyTorch con Ic experimental.
+    - Data_R: Ruta opcional a un archivo de texto con mediciones de reflectancia (a 0 grados).
     - th_0: Ángulo de incidencia en radianes.
     - num_starts: Cantidad de semillas aleatorias paralelas.
     - num_epochs: Número de épocas del optimizador.
@@ -584,8 +585,28 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
     print(f"Ejecutando en dispositivo: {device}")
     
     # Asegurar que lams, Is_exp, Ic_exp estén en el dispositivo
-    lams = lams.to(device)
+    if not isinstance(lams, torch.Tensor):
+        lams = torch.tensor(lams, dtype=torch.float64, device=device)
+    else:
+        lams = lams.to(device)
     
+    if Data_R is not None:
+        R_exp_raw = np.loadtxt(Data_R)
+        wl_R = np.linspace(190, 900, len(R_exp_raw))
+        # bounds_error=False y fill_value="extrapolate" para evitar caídas por fuera de rango
+        R_interp = interp1d(wl_R, R_exp_raw, kind='linear', bounds_error=False, fill_value="extrapolate")
+        
+        # Mover a CPU si lams es tensor de PyTorch (interp1d requiere numpy)
+        lams_np = lams.cpu().numpy() if isinstance(lams, torch.Tensor) else np.array(lams)
+        R_exp = R_interp(lams_np)
+        
+        # Si la reflectancia está en porcentaje (0-100), la dividimos por 100 para que coincida con el rango [0,1]
+        if np.max(R_exp) > 1.0:
+            print("Advertencia: Se detectó reflectancia > 1.0 en los datos experimentales. Se asume escala 0-100% y se divide por 100.")
+            R_exp = R_exp / 100.0
+            
+        R_exp = torch.tensor(R_exp, dtype=torch.float64, device=device)
+        
     if not isinstance(Is_exp, torch.Tensor):
         Is_exp = torch.tensor(Is_exp, dtype=torch.float64, device=device)
     else:
@@ -872,12 +893,23 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
             n_list_3d = reconstruct_n_list_batched(p_opt)
             res_s = coh_tmm_torch_batched(pol='s', n_list=n_list_3d, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p = coh_tmm_torch_batched(pol='p', n_list=n_list_3d, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+            if Data_R is not None:
+                # Como el ángulo de incidencia es 0 entonces s y p son iguales
+                res_0deg = coh_tmm_torch_batched(pol='s', n_list=n_list_3d, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
         else:
             res_s = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p = tmm.coh_tmm_torch(pol='p', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+            if Data_R is not None:
+                # Como el ángulo de incidencia es 0 entonces s y p son iguales
+                res_0deg = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
             
         r_s = res_s['r']
         r_p = res_p['r']
+        
+        if Data_R is not None:
+            # R_teo = |r_0deg|^2. res_0deg['r'] es complejo, por lo que usamos (r * r.conj()).real
+            R_teo = (res_0deg['r'] * res_0deg['r'].conj()).real
+            error_R = (R_teo - R_exp) ** 2
         
         rho = torch.conj(r_p / r_s)
         psi_teo = torch.atan(torch.abs(rho))
@@ -889,7 +921,11 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
         error_Is = (Is_teo - Is_exp) ** 2
         error_Ic = (Ic_teo - Ic_exp) ** 2
         
-        loss_per_start = (error_Is + error_Ic).mean(dim=-1)
+        if Data_R is not None:
+            loss_per_start = (error_Is + error_Ic + error_R).mean(dim=-1)
+        else:
+            loss_per_start = (error_Is + error_Ic).mean(dim=-1)
+            
         loss = loss_per_start.sum()
         
         loss.backward()
@@ -916,9 +952,13 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
             n_list_3d_final = reconstruct_n_list_batched(p_opt)
             res_s_final = coh_tmm_torch_batched(pol='s', n_list=n_list_3d_final, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p_final = coh_tmm_torch_batched(pol='p', n_list=n_list_3d_final, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+            if Data_R is not None:
+                res_0deg_final = coh_tmm_torch_batched(pol='s', n_list=n_list_3d_final, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
         else:
             res_s_final = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p_final = tmm.coh_tmm_torch(pol='p', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+            if Data_R is not None:
+                res_0deg_final = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
             
         r_s_final = res_s_final['r']
         r_p_final = res_p_final['r']
@@ -932,7 +972,13 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, th_0=0.0,
         
         error_Is_final = (Is_teo_final - Is_exp) ** 2
         error_Ic_final = (Ic_teo_final - Ic_exp) ** 2
-        loss_final = (error_Is_final + error_Ic_final).mean(dim=-1)
+        
+        if Data_R is not None:
+            R_teo_final = (res_0deg_final['r'] * res_0deg_final['r'].conj()).real
+            error_R_final = (R_teo_final - R_exp) ** 2
+            loss_final = (error_Is_final + error_Ic_final + error_R_final).mean(dim=-1)
+        else:
+            loss_final = (error_Is_final + error_Ic_final).mean(dim=-1)
         
     best_idx = loss_final.argmin()
     

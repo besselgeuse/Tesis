@@ -15,7 +15,7 @@ spec.loader.exec_module(tmm)
 from tmm_utils_Rodrigo import cauchy_fn, n_eff, load_interp, brugg_fn, constant_fn
 
 # Ruta del archivo de resultados
-results_path = './Datos-04-6/resultados_stack_6.txt'
+results_path = './Datos-04-6/resultados_stack_7.txt'
 exp_path = './Datos-04-6/1TIO2-2.txt'
 #%%
 # 2. Parsear de forma robusta e inmune a problemas de codificación ASCII/UTF-8
