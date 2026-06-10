@@ -32,6 +32,7 @@ services:
     environment:
       # Apunta al nombre de host 'db' (nombre del servicio en Docker)
       - DATABASE_URL=mysql+pymysql://root:CNEA1234@db:3306/ellipsometry_fit_db
+      - SECRET_KEY=${SECRET_KEY}
     depends_on:
       db:
         condition: service_healthy

@@ -12,8 +12,13 @@ import jwt
 import io
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+import os
+from dotenv import load_dotenv
 
-SECRET_KEY = "clave_secreta_elipsometro_cnea_constituyentes"
+# Cargar variables de entorno del archivo .env
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY", "clave_secreta_genérica")
 ALGORITHM = "HS256"
 
 # inicializamos la app

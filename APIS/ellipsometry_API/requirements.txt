@@ -13,3 +13,4 @@ cryptography==42.0.5
 python-multipart==0.0.32
 pyjwt==2.13.0
 bcrypt
+python-dotenv
