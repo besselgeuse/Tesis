@@ -1,4 +1,5 @@
-#%%
+# region 1. Extraer datos de los archivos txt
+#%% 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -205,4 +206,40 @@ plt.xlim([np.min(wl),np.max(wl)])
 plt.ylim([3,5])
 plt.legend()
 plt.show()
+
+# endregion
+# %%
+#=====================================================================
+#=====================================================================
+#=====================================================================
+#=====================================================================
+#=====================================================================
+# region 2. Extraer datos directamente de la base de datos
+#%% 
+import models
+from database import engine, SessionLocal
+import numpy as np
+import matplotlib.pyplot as plt
+#%%
+db = SessionLocal()
+
+# Query 
+stack = db.query(models.Stack).filter(models.Stack.id == 7).first()
+
+best_Is = np.array(stack.best_Is)
+best_Ic = np.array(stack.best_Ic)
+wl_exp = np.array(stack.wl_exp)
+Is_exp = np.array(stack.Is_exp)
+Ic_exp = np.array(stack.Ic_exp)
+# %%
+fig,ax = plt.subplots(2,1,figsize=(10,6))
+ax[0].plot(wl_exp,Ic_exp,'k-',label="Ic Experimental")
+ax[0].plot(wl_exp,best_Ic,'r--',label="Ic Calculada")
+ax[0].legend()
+ax[1].plot(wl_exp,Is_exp,'k-',label="Is Experimental")
+ax[1].plot(wl_exp,best_Is,'r--',label="Is Calculada")
+ax[1].legend()
+plt.tight_layout()
+plt.show()
+
 # %%
