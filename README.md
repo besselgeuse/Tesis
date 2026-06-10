@@ -29,4 +29,4 @@ El proyecto está completamente dockerizado, de modo que no requiere configuraci
 - Si bien tiene la opción de usar tecnologia CUDA en la versión dockerizada no está disponible puesto que se instaló una libreria de pytorch mas liviana que solo trabaja con la cpu. De lo contrario se pueden descargar manualmente las librerias del requirements.txt para usar "uvicorn main:app --reload" directamente desde la consola.
 
 ## Archivos
-En la pestaña de historial quedarán guardados los archivos con los parametros y datos ajustados para descargar en formato txt. Cada usuario tendra acceso unicamente a sus propias mediciones.
+En la pestaña de historial quedarán guardados los archivos con los parametros y datos ajustados para descargar en formato txt. Cada usuario verá unicamente sus simulaciones para una mejor organización. En caso de querer cambiar esto y ver toda la base de datos puede modificarse los endpoints.get eliminando las funciones .filter("...") o entrando directamente desde docker.
