@@ -124,6 +124,12 @@ def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, l
     # ── CARGAR DATOS EXPERIMENTALES ──
     wl_exp, psi_deg, delta_deg = np.loadtxt(data_path, skiprows=skiprows, unpack=True)
 
+    # Filtrar longitudes de onda mayores a 830 nm (ruido experimental)
+    mask = wl_exp <= 830.0
+    wl_exp = wl_exp[mask]
+    psi_deg = psi_deg[mask]
+    delta_deg = delta_deg[mask]
+
     # Convertir ángulos de grados a radianes
     psi = np.radians(psi_deg)
     delta = np.radians(delta_deg)

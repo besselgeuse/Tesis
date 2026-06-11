@@ -1,0 +1,5 @@
+Quiero modificar el rango de libertad que tienen para moverse los espesores y los parametros en el simulador. 
+Para esto lo que voy a hacer es subdividir el rango de busqueda y que el codigo se ejecute muchas veces
+hasta cubir el rango completo y despues quedarme con el que haya tenido el menor error cuadratico medio.
+Para hacer esto no sera necesario modificar la funcion de ajuste elipsometrico de torch, solo
+creare otra función que haga el trabajo de subdividir y ejecutar el codigo muchas veces. 

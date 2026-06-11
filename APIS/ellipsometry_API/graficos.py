@@ -220,18 +220,19 @@ import models
 from database import engine, SessionLocal
 import numpy as np
 import matplotlib.pyplot as plt
+from tmm_utils_Rodrigo import cauchy_fn
 #%%
 db = SessionLocal()
 
 # Query 
-stack = db.query(models.Stack).filter(models.Stack.id == 7).first()
+stack = db.query(models.Stack).filter(models.Stack.id == 17).first()
 
 best_Is = np.array(stack.best_Is)
 best_Ic = np.array(stack.best_Ic)
 wl_exp = np.array(stack.wl_exp)
 Is_exp = np.array(stack.Is_exp)
 Ic_exp = np.array(stack.Ic_exp)
-# %%
+
 fig,ax = plt.subplots(2,1,figsize=(10,6))
 ax[0].plot(wl_exp,Ic_exp,'k-',label="Ic Experimental")
 ax[0].plot(wl_exp,best_Ic,'r--',label="Ic Calculada")
@@ -242,4 +243,18 @@ ax[1].legend()
 plt.tight_layout()
 plt.show()
 
+# %%
+#Parametros de la capa de Tio2
+A = stack.layers[1]["params"]["A"]
+B = stack.layers[1]["params"]["B"]
+C = stack.layers[1]["params"]["C"]
+thickness = stack.layers[1]["thickness"]
+n_ti2 = cauchy_fn(A,B,C)(wl_exp)
+
+plt.figure(figsize=(10, 6))
+plt.plot(wl_exp,n_ti2.real,'k-',label="n TiO2")
+plt.xlim([np.min(wl_exp),np.max(wl_exp)])
+plt.ylim([np.min(n_ti2.real) - 0.1,np.max(n_ti2.real) + 0.1])
+plt.legend()
+plt.show()
 # %%

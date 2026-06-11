@@ -30,8 +30,8 @@ API_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(API_DIR, 'static')
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-data_path='./Datos-28-5/TiO2_Si_Sputtering_muestra2_sincinta.txt'
-Data_R='./Datos-04-6/1TIO2-2.txt'
+data_path='./Datos-09-6/TiO2_Si_SI_SP_S1.txt'
+Data_R= None#'./Datos-04-6/1TIO2-2.txt'
 
 #creo la tabla
 models.Base.metadata.create_all(bind=engine)

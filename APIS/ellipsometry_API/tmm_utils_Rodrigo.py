@@ -555,6 +555,25 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
     return {'r': r, 't': t}
 
 
+def autorange_fit_ellipsometry_torch(d_bounds,params):
+
+    subdivision = 10
+    subdivisions = []
+    for d_bound in d_bounds:
+        rango = d_bound[1] - d_bound[0]
+        partes = rango/subdivision
+        for i in range(partes):
+            subdivisions.append([d_bounds[0]+i*subdivision, d_bounds[0]+(i+1)*subdivision])
+    subdivision = 1
+    subdivisions_params = []
+    for p_bound in params:
+        rango = p_bound[1] - p_bound[0]
+        partes = rango/subdivision
+        for i in range(partes):
+            subdivisions_params.append([p_bound[0]+i*subdivision, p_bound[0]+(i+1)*subdivision])
+    return subdivisions, subdivisions_params
+
+
 def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
                            num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
                            layer_models=None, layer_names=None):
@@ -1062,9 +1081,9 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                         print(f"    {k} = {val}")
                     
     if layer_models is not None:
-        return best_thicknesses, best_Is_curve, best_Ic_curve, best_params
+        return best_thicknesses, best_Is_curve, best_Ic_curve, best_params, loss_final[best_idx].item()
     else:
-        return best_thicknesses, best_Is_curve, best_Ic_curve
+        return best_thicknesses, best_Is_curve, best_Ic_curve, loss_final[best_idx].item()
 
 def load_stack(filename, materials):
     '''Loads stack from Xlsx used by IR-S in Matlab. 'Materials' is a dict 
