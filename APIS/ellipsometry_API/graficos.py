@@ -225,7 +225,7 @@ from tmm_utils_Rodrigo import cauchy_fn
 db = SessionLocal()
 
 # Query 
-stack = db.query(models.Stack).filter(models.Stack.id == 17).first()
+stack = db.query(models.Stack).filter(models.Stack.id == 22).first()
 
 best_Is = np.array(stack.best_Is)
 best_Ic = np.array(stack.best_Ic)
@@ -255,6 +255,124 @@ plt.figure(figsize=(10, 6))
 plt.plot(wl_exp,n_ti2.real,'k-',label="n TiO2")
 plt.xlim([np.min(wl_exp),np.max(wl_exp)])
 plt.ylim([np.min(n_ti2.real) - 0.1,np.max(n_ti2.real) + 0.1])
+plt.legend()
+plt.show()
+# %%
+#=====================================================================
+#=====================================================================
+#=====================================================================
+#=====================================================================
+#=====================================================================
+# region 3. Graficos del elipsometro y varios
+#%%
+import numpy as np
+import matplotlib.pyplot as plt
+from tmm_utils_Rodrigo import cauchy_fn,load_interp
+#%%
+#Muestras de TiO2
+muestra1 = np.loadtxt("datos-09-6/TiO2_Si_SP_S1.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra1_ajustada = np.loadtxt("datos-09-6/TiO2_Si_SP_S1_fit.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra2 = np.loadtxt("datos-11-6/TiO2_Si_Sputtering_D2.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra2_ajustada = np.loadtxt("datos-11-6/TiO2_Si_Sputtering_D2_fit.txt", skiprows = 5,unpack=True,delimiter="\t")
+
+wl1,psi1,delta1 = muestra1
+wl2,psi2,delta2 = muestra2
+wl1_a,psi1_a,delta1_a = muestra1_ajustada
+wl2_a,psi2_a,delta2_a = muestra2_ajustada
+
+fig,ax = plt.subplots(2,1,figsize=(10,6))
+ax[0].plot(wl1,psi1,'k-',label="psi Experimental")
+ax[0].plot(wl1_a,psi1_a,'r--',label="psi ajustado")
+ax[0].legend()
+ax[1].plot(wl1,delta1,'k-',label="delta Experimental")
+ax[1].plot(wl1_a,delta1_a,'r--',label="delta ajustado")
+ax[1].legend()
+plt.tight_layout()
+plt.show()
+# %% 
+# Mismo para la muestra 2
+fig,ax = plt.subplots(2,1,figsize=(10,6))
+ax[0].plot(wl2,psi2,'k-',label="psi Experimental")
+ax[0].plot(wl2_a,psi2_a,'r--',label="psi ajustado")
+ax[0].legend()
+ax[1].plot(wl2,delta2,'k-',label="delta Experimental")
+ax[1].plot(wl2_a,delta2_a,'r--',label="delta ajustado")
+ax[1].legend()
+plt.tight_layout()
+plt.show()
+# %%
+"""
+Para la muestra 1 tengo estos parametros:
+\par  2) TiO2_trsansparente  A =  2.4072740 \'fc 0.0102419
+\par  3) TiO2_trsansparente  B = -3.4768180 \'fc 0.6405784
+\par  4) TiO2_trsansparente  C = 13.3268100 \'fc 0.9630267
+"""
+ruta_materiales = r"./indices"
+Rutilo = load_interp(f'{ruta_materiales}/TiO2Palik.nk', unit='um', skiprows=1)
+n_1 = cauchy_fn(2.4072740,-3.4768180,13.3268100)(wl1)
+n_rutilo = Rutilo[0](wl1)
+plt.figure(figsize=(10, 6))
+plt.plot(wl1,n_1.real,'k-',label="n TiO2")
+plt.plot(wl1,n_rutilo,'r--',label="n Palik")
+plt.xlim([np.min(wl1),np.max(wl1)])
+plt.ylim([np.min(n_1.real) - 0.1,np.max(n_rutilo) + 0.1])
+plt.legend()
+plt.show()
+# %%
+"""
+Para la muestra 2 tengo estos parametros:
+\par  2) TiO2_trsansparente  A =  2.2738000 \'fc 0.0034419
+\par  3) TiO2_trsansparente  B =  2.7818630 \'fc 0.2146606
+\par  4) TiO2_trsansparente  C =  7.3597000 \'fc 0.3259595
+"""
+n_2 = cauchy_fn(2.2738000,2.7818630,7.3597000)(wl2)
+plt.figure(figsize=(10, 6))
+plt.plot(wl2,n_2.real,'k-',label="n TiO2")
+plt.plot(wl2,n_rutilo,'r--',label="n Palik")
+plt.xlim([np.min(wl2),np.max(wl2)])
+plt.ylim([np.min(n_1.real) - 0.1,np.max(n_rutilo) + 0.1])
+plt.legend()
+plt.show()
+# %%
+#Ahora la comparación de los indices de las dos muestras
+plt.figure(figsize=(10, 8))
+plt.plot(wl1,n_1.real,'b-',label="n TiO2 Muestra 1")
+plt.plot(wl2,n_2.real,'r-',label="n TiO2 Muestra 2")
+plt.xlim([np.min(wl1),np.max(wl1)])
+plt.ylim([np.min(n_1.real) - 0.1,np.max(n_2.real) + 0.1])
+plt.legend()
+plt.show()
+#%%
+import sys
+import importlib
+from tmm_utils_Rodrigo import constant_fn,calculate_RT
+# 1. Cargar tmm_core de manera segura
+spec = importlib.util.spec_from_file_location("tmm", "./tmm_core.py")
+tmm = importlib.util.module_from_spec(spec)
+sys.modules["tmm"] = tmm
+spec.loader.exec_module(tmm)
+# Ahora voy a graficar las reflectancias y compararlas con la simulación usando el tmm.
+R_TiO2 = np.loadtxt("./Mediciones de reflectancia/11-6/2TiO2N.txt")
+R_lams = np.linspace(190,900,len(R_TiO2))
+
+materials = {}
+materials["TiO2_SP"] = (cauchy_fn(2.2738000,2.7818630,7.3597000),constant_fn(0.0))
+materials["Si"] = (load_interp(f'{ruta_materiales}/nkdata/optical/Si.nk', skiprows=1))
+materials["air"] = (constant_fn(1.0),constant_fn(0.0))
+
+stack = [[np.inf,"air", "i"],
+         [40.062, "TiO2_SP", "c"],
+         [np.inf, "Si", "i"]]
+
+#calculo de reflectancia
+RT = calculate_RT(th_0=0, stack=stack, materials=materials,lams = R_lams)
+ref,trans = RT
+
+plt.figure(figsize=(10, 6))
+plt.plot(R_lams,R_TiO2,'k-',label="R Experimental")
+plt.plot(R_lams,ref,'r--',label="R Calculada")
+plt.xlim([430,850])
+plt.ylim([0,0.6])
 plt.legend()
 plt.show()
 # %%
