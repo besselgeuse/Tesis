@@ -555,23 +555,6 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
     return {'r': r, 't': t}
 
 
-def autorange_fit_ellipsometry_torch(d_bounds,params):
-
-    subdivision = 10
-    subdivisions = []
-    for d_bound in d_bounds:
-        rango = d_bound[1] - d_bound[0]
-        partes = rango/subdivision
-        for i in range(partes):
-            subdivisions.append([d_bounds[0]+i*subdivision, d_bounds[0]+(i+1)*subdivision])
-    subdivision = 1
-    subdivisions_params = []
-    for p_bound in params:
-        rango = p_bound[1] - p_bound[0]
-        partes = rango/subdivision
-        for i in range(partes):
-            subdivisions_params.append([p_bound[0]+i*subdivision, p_bound[0]+(i+1)*subdivision])
-    return subdivisions, subdivisions_params
 
 
 def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
