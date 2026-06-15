@@ -665,13 +665,13 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                 if model_type == 'cauchy':
                     num_p = 3
                     # A en [1.0, 3.0], B y C en [-1.0, 1.0]
-                    default_bounds = [(0.0, 30.0), (-30.0, 30.0), (-100.0, 100.0)]
-                    default_initial = [15.0, 0.0, 0.0]
+                    default_bounds = [(0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0)]
+                    default_initial = [3.0, 0.0, 0.0]
                 elif model_type == 'cauchy_absorbent':
                     num_p = 6
                     # A en [1.0, 3.0], B y C en [-1.0, 1.0], D en [0.0, 2.0], E y F en [-1.0, 1.0]
-                    default_bounds = [(0.0, 30.0), (-30.0, 30.0), (-100.0, 100.0), (0.0, 100.0), (-30.0, 30.0), (-100.0, 100.0)]
-                    default_initial = [15.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    default_bounds = [(0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0), (0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0)]
+                    default_initial = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
                 elif model_type == 'bruggeman':
                     # Extraer configuración de fracción de aire
                     if isinstance(model, dict):
@@ -843,6 +843,7 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                     B = p_phys_list[1].unsqueeze(1)
                     C = p_phys_list[2].unsqueeze(1)
                     n_calc = A + B * inv_lam2 + C * inv_lam4
+                    n_calc = torch.clamp(n_calc, min=1.0)
                     n_complex = n_calc.to(torch.complex128)
                 elif model_type == 'cauchy_absorbent':
                     A = p_phys_list[0].unsqueeze(1)
@@ -852,6 +853,7 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                     E = p_phys_list[4].unsqueeze(1)
                     F = p_phys_list[5].unsqueeze(1)
                     n_calc = A + B * inv_lam2 + C * inv_lam4
+                    n_calc = torch.clamp(n_calc, min=1.0)
                     k_calc = D + E * inv_lam2 + F * inv_lam4
                     k_calc = torch.clamp(k_calc, min=0.0)
                     n_complex = torch.complex(n_calc, k_calc)

@@ -115,7 +115,6 @@ El sistema tiene dos modos de uso:
 |---------|-----------|
 | `calculate_RT_torch(...)` | Optimiza espesores para minimizar reflectancia (solar cells) |
 | `fit_ellipsometry_torch(...)` | Optimiza espesores + parámetros de dispersión para elipsometría |
-| `autorange_fit_ellipsometry_torch(...)` | Optimización en dos fases: coarse-to-fine |
 | `coh_tmm_torch_batched(...)` | TMM batched (semillas × longitudes de onda) para paralelismo |
 
 #### Mecanismo de acotamiento (sigmoide + logit)
@@ -174,10 +173,8 @@ Orquesta todo el proceso de ajuste:
 3. Filtra longitudes de onda > 830 nm (ruido).
 4. Carga los materiales estáticos del diccionario.
 5. Construye `n_list_torch` (tensor complejo de índices de refracción).
-6. Llama a `fit_ellipsometry_torch()` o `autorange_fit_ellipsometry_torch()`.
+6. Llama a `fit_ellipsometry_torch()`.
 7. Opcionalmente guarda/carga caché con pickle.
-
-**Parámetro clave:** `autorange=False` → Si True, usa la optimización coarse-to-fine.
 
 ---
 
@@ -194,7 +191,7 @@ Orquesta todo el proceso de ajuste:
 | `LayerModel` | `model_type` (cauchy/cauchy_absorbent/bruggeman), `bounds` |
 | `Layer` | `name`, `model` (LayerModel), `d_min`, `d_max` |
 | `Stack` | `name`, `layers` (List[Layer]) |
-| `SimParam` | `num_starts`, `num_epochs`, `lr`, `use_cuda`, `th_0`, `autorange`, `stack` |
+| `SimParam` | `num_starts`, `num_epochs`, `lr`, `use_cuda`, `th_0`, `stack` |
 
 **Endpoints:**
 
@@ -270,7 +267,7 @@ Single Page Application (SPA) HTML+JS puro (~73KB). Pestañas:
 ### NaN en la loss
 **Causa más frecuente:** Combinaciones de parámetros de Cauchy que producen índices de
 refracción negativos o extremadamente pequeños, causando divisiones por cero en TMM.
-**Mitigación:** Acotar rangos de búsqueda, usar `autorange`, clampear logits a [-5, 5].
+**Mitigación:** Acotar rangos de búsqueda, clampear logits a [-5, 5].
 
 ### Ruido experimental > 830 nm
 Los datos del elipsómetro por encima de 830 nm son ruidosos.
