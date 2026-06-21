@@ -24,11 +24,11 @@ espesores = np.arange(10,200,10)
 n_o = 0
 for i in materials.keys():
     for j in materials.keys():
-        stacks.append([
-            [np.inf,'air','i'],
-            [,i,'c'],
-            [,j,'c'],
-            [np.inf,'Si','i']
-        ]
-            )
+        for k in espesores:
+            for l in espesores:
+                stacks.append([
+                    [np.inf,'air','i'],
+                    [k,i,'c'],
+                    [l,j,'c'],
+                    [np.inf,'Si','i']])
 #%%
