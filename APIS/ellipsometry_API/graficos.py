@@ -376,3 +376,30 @@ plt.ylim([0,0.6])
 plt.legend()
 plt.show()
 # %%
+#=====================================================================
+#=====================================================================
+#=====================================================================
+#=====================================================================
+#=====================================================================
+# Región 4 graficos variados
+# %%
+import matplotlib.pyplot as plt
+import numpy as np
+from tmm_utils_Rodrigo import load_interp
+ruta_materiales = './indices'
+materials = {
+    'SiO2_nk' : (load_interp(f'{ruta_materiales}/nkdata/SiO2_Palik.nk',skiprows=1,unit='um')),
+    'SiO2_nkv' : (load_interp(f'{ruta_materiales}/nkdata/SiO2.nkv',skiprows=1))
+}
+
+lams = np.linspace(300,900,1000)
+
+plt.figure(figsize=(10,6))
+plt.plot(lams,materials['SiO2_nkv'][0](lams).real,'b-',label="n SiO2 nkv")
+plt.plot(lams,materials['SiO2_nk'][0](lams).real,'g--',label="n SiO2 nk")
+plt.ylim(1,2)
+plt.legend()
+plt.show()
+
+
+# %%
