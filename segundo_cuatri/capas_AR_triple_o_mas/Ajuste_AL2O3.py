@@ -215,3 +215,167 @@ guardar_resultados_txt(
     psi_exp, psi_fit, delta_exp, delta_fit, best_thicknesses, best_params
 )
 # %%
+# %% CÁLCULO MANUAL DE I_s, I_c, PSI Y DELTA PARA ESPESORES GRUESOS (~970 nm)
+from tmm_utils_Rodrigo import coh_tmm_torch_batched
+
+# Parámetros del ajuste del elipsómetro / teóricos
+A_elip, B_elip, C_elip = 1.614, 0.0048, 0.00012  # Modelo Cauchy para Al2O3
+f_air_elip = 0.54                               # Fracción de aire en la capa porosa (nanotubo)
+
+# Espesores de prueba (nm) que suman ~970 nm (ej. 500 nm nanotubo + 470 nm Al2O3 denso)
+d_nanotube_test = 500.0
+d_al2o3_test = 470.0
+d_total_test = d_nanotube_test + d_al2o3_test
+print(f"Calculando respuesta óptica para espesores gruesos: d_nanotube = {d_nanotube_test} nm, d_Al2O3 = {d_al2o3_test} nm (Total = {d_total_test} nm)")
+
+# Construcción de índices de refracción
+n_air_calc = torch.ones_like(lams_torch, dtype=torch.complex128)
+n_al2o3_calc = torch.tensor(cauchy_fn(A_elip, B_elip, C_elip)(wl_exp), dtype=torch.complex128)
+n_nanotube_calc = torch.tensor(brugg_fn(cauchy_fn(A_elip, B_elip, C_elip), constant_fn(1.0), f_air_elip)(wl_exp), dtype=torch.complex128)
+n_si_calc = n_list_torch[3]  # Silicio del stack cargado
+
+# Stack 3D para PyTorch TMM: [1, 4, num_wl]
+n_stack_test = torch.stack([n_air_calc, n_nanotube_calc, n_al2o3_calc, n_si_calc], dim=0).unsqueeze(0)
+d_stack_test = torch.tensor([[float('inf'), d_nanotube_test, d_al2o3_test, float('inf')]], dtype=torch.float64, device=lams_torch.device).unsqueeze(-1).expand(1, 4, len(wl_exp))
+
+# Cálculo TMM para polarizaciones s y p
+res_s_test = coh_tmm_torch_batched('s', n_stack_test, d_stack_test, th_0=th_0_rad, lam_vac=lams_torch)
+res_p_test = coh_tmm_torch_batched('p', n_stack_test, d_stack_test, th_0=th_0_rad, lam_vac=lams_torch)
+
+# Reflectancias R_s y R_p
+R_s_test = (res_s_test['r'][0] * res_s_test['r'][0].conj()).real.cpu().numpy()
+R_p_test = (res_p_test['r'][0] * res_p_test['r'][0].conj()).real.cpu().numpy()
+
+# Coeficiente elipsométrico rho = r_p / r_s
+rho_test = torch.conj(res_p_test['r'][0] / res_s_test['r'][0])
+psi_calc_rad = torch.atan(torch.abs(rho_test))
+delta_calc_rad = torch.angle(rho_test)
+
+# Componentes Is e Ic calculadas
+Is_calc_thick = (torch.sin(2 * psi_calc_rad) * torch.sin(delta_calc_rad)).cpu().numpy()
+Ic_calc_thick = (torch.sin(2 * psi_calc_rad) * torch.cos(delta_calc_rad)).cpu().numpy()
+
+# Ángulos Psi y Delta calculados (en grados)
+psi_calc_deg = np.degrees(psi_calc_rad.cpu().numpy())
+delta_calc_deg = np.degrees(delta_calc_rad.cpu().numpy())
+delta_calc_deg = np.mod(delta_calc_deg, 360)
+
+# --- GRAFICADO DE RESULTADOS PARA ESPESOR GRUESO (~970 nm) ---
+fig, axes = plt.subplots(3, 1, figsize=(12, 12))
+
+# 1. Reflectancias Rs y Rp
+axes[0].plot(wl_exp, R_s_test, 'b-', label='$R_s$ simulada', linewidth=1.5)
+axes[0].plot(wl_exp, R_p_test, 'r-', label='$R_p$ simulada', linewidth=1.5)
+axes[0].set_title(f'Reflectancias $R_s$ y $R_p$ (Espesor Total = {d_total_test:.1f} nm)')
+axes[0].set_xlabel('Longitud de onda [nm]')
+axes[0].set_ylabel('Reflectancia')
+axes[0].grid(True)
+axes[0].legend()
+
+# 2. Componentes Is e Ic
+axes[1].plot(wl_exp, Is_exp, 'b.', label='$I_s$ exp', alpha=0.5)
+axes[1].plot(wl_exp, Is_calc_thick, 'b-', label=f'$I_s$ calc ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[1].plot(wl_exp, Ic_exp, 'r.', label='$I_c$ exp', alpha=0.5)
+axes[1].plot(wl_exp, Ic_calc_thick, 'r-', label=f'$I_c$ calc ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[1].set_title(f'Componentes $I_s$ e $I_c$ para Espesor Grueso ({d_total_test:.1f} nm)')
+axes[1].set_xlabel('Longitud de onda [nm]')
+axes[1].set_ylabel('Intensidad Modulada')
+axes[1].grid(True)
+axes[1].legend()
+
+# 3. Parámetros Psi y Delta
+axes[2].plot(wl_exp, psi_exp, 'g.', label='$\\Psi$ exp', alpha=0.5)
+axes[2].plot(wl_exp, psi_calc_deg, 'g-', label=f'$\\Psi$ calc ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[2].plot(wl_exp, delta_exp, 'm.', label='$\\Delta$ exp', alpha=0.5)
+axes[2].plot(wl_exp, delta_calc_deg, 'm-', label=f'$\\Delta$ calc ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[2].set_title(f'Parámetros Elipsométricos $\\Psi$ y $\\Delta$ (Espesor Total = {d_total_test:.1f} nm)')
+axes[2].set_xlabel('Longitud de onda [nm]')
+axes[2].set_ylabel('Grados [°]')
+axes[2].grid(True)
+axes[2].legend()
+
+plt.tight_layout()
+plt.show()
+
+# %% CÁLCULO MANUAL USANDO tmm.coh_tmm (VERSIÓN NUMPY) Y COMPARACIÓN CON TORCH
+import tmm_core as tmm
+
+# Construcción del vector de índices NumPy por capa y por longitud de onda
+n_air_np = np.ones_like(wl_exp, dtype=complex)
+n_al2o3_np = cauchy_fn(A_elip, B_elip, C_elip)(wl_exp) + 0j
+n_nanotube_np = brugg_fn(cauchy_fn(A_elip, B_elip, C_elip), constant_fn(1.0), f_air_elip)(wl_exp) + 0j
+n_si_np = n_list_torch[3].cpu().numpy()  # Silicio
+
+# n_list de forma [num_capas, num_wl] y d_list de capas
+n_list_np_stack = np.array([n_air_np, n_nanotube_np, n_al2o3_np, n_si_np])
+d_list_np_stack = [np.inf, d_nanotube_test, d_al2o3_test, np.inf]
+
+# Cálculo TMM coherente (NumPy) para polarización s y p
+res_s_np = tmm.coh_tmm('s', n_list_np_stack, d_list_np_stack, th_0_rad, wl_exp)
+res_p_np = tmm.coh_tmm('p', n_list_np_stack, d_list_np_stack, th_0_rad, wl_exp)
+
+# Reflectancias R_s y R_p (NumPy)
+R_s_np = res_s_np['R']
+R_p_np = res_p_np['R']
+
+# Coeficiente elipsométrico rho = r_p / r_s
+rho_np = np.conj(res_p_np['r'] / res_s_np['r'])
+psi_np_rad = np.arctan(np.abs(rho_np))
+delta_np_rad = np.angle(rho_np)
+
+# Componentes Is e Ic calculadas (NumPy)
+Is_calc_coh_np = np.sin(2 * psi_np_rad) * np.sin(delta_np_rad)
+Ic_calc_coh_np = np.sin(2 * psi_np_rad) * np.cos(delta_np_rad)
+
+# Ángulos Psi y Delta (en grados)
+psi_np_deg = np.degrees(psi_np_rad)
+delta_np_deg = np.mod(np.degrees(delta_np_rad), 360)
+
+# --- COMPARACIÓN DE PRECISIÓN ENTRE NUMPY (coh_tmm) Y PYTORCH (coh_tmm_torch_batched) ---
+diff_max_Is = np.max(np.abs(Is_calc_coh_np - Is_calc_thick))
+diff_max_Ic = np.max(np.abs(Ic_calc_coh_np - Ic_calc_thick))
+diff_max_psi = np.max(np.abs(psi_np_deg - psi_calc_deg))
+
+print("\n================ COMPARACIÓN coh_tmm VS coh_tmm_torch_batched ================")
+print(f"Diferencia máxima absoluta en Is : {diff_max_Is:.2e}")
+print(f"Diferencia máxima absoluta en Ic : {diff_max_Ic:.2e}")
+print(f"Diferencia máxima absoluta en Psi: {diff_max_psi:.2e} °")
+print("================================================================================")
+
+# --- GRAFICADO DE RESULTADOS (tmm.coh_tmm NumPy) ---
+fig, axes = plt.subplots(3, 1, figsize=(12, 12))
+
+# 1. Reflectancias Rs y Rp (NumPy)
+axes[0].plot(wl_exp, R_s_np, 'b-', label='$R_s$ (coh_tmm NumPy)', linewidth=1.5)
+axes[0].plot(wl_exp, R_p_np, 'r-', label='$R_p$ (coh_tmm NumPy)', linewidth=1.5)
+axes[0].set_title(f'Reflectancias $R_s$ y $R_p$ con coh_tmm (Espesor Total = {d_total_test:.1f} nm)')
+axes[0].set_xlabel('Longitud de onda [nm]')
+axes[0].set_ylabel('Reflectancia')
+axes[0].grid(True)
+axes[0].legend()
+
+# 2. Componentes Is e Ic (NumPy)
+axes[1].plot(wl_exp, Is_exp, 'b.', label='$I_s$ exp', alpha=0.5)
+axes[1].plot(wl_exp, Is_calc_coh_np, 'b-', label=f'$I_s$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[1].plot(wl_exp, Ic_exp, 'r.', label='$I_c$ exp', alpha=0.5)
+axes[1].plot(wl_exp, Ic_calc_coh_np, 'r-', label=f'$I_c$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[1].set_title(f'Componentes $I_s$ e $I_c$ con coh_tmm ({d_total_test:.1f} nm)')
+axes[1].set_xlabel('Longitud de onda [nm]')
+axes[1].set_ylabel('Intensidad Modulada')
+axes[1].grid(True)
+axes[1].legend()
+
+# 3. Parámetros Psi y Delta (NumPy)
+axes[2].plot(wl_exp, psi_exp, 'g.', label='$\\Psi$ exp', alpha=0.5)
+axes[2].plot(wl_exp, psi_np_deg, 'g-', label=f'$\\Psi$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[2].plot(wl_exp, delta_exp, 'm.', label='$\\Delta$ exp', alpha=0.5)
+axes[2].plot(wl_exp, delta_np_deg, 'm-', label=f'$\\Delta$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
+axes[2].set_title(f'Parámetros Elipsométricos $\\Psi$ y $\\Delta$ con coh_tmm ({d_total_test:.1f} nm)')
+axes[2].set_xlabel('Longitud de onda [nm]')
+axes[2].set_ylabel('Grados [°]')
+axes[2].grid(True)
+axes[2].legend()
+
+plt.tight_layout()
+plt.show()
+# %%
