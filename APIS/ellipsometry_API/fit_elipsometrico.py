@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 # Importar utilidades del TMM
 sys.path.append('./')
 from tmm_utils_Rodrigo import (
-    load_interp, cauchy_fn, constant_fn, brugg_fn, calculate_RT_torch, load_fn, fit_ellipsometry_torch
+    load_interp, cauchy_fn, constant_fn, brugg_fn, calculate_RT_torch, load_fn, fit_ellipsometry_torch,
+    autorange_fit_ellipsometry_torch
 )
 
 # ============================================================
@@ -46,7 +47,7 @@ materials['SiO2_Si_brugge'] = (brugg_fn(modelo_SiO2, constant_fn(1.0), 0.5), con
 # ============================================================
 
 def _compute_cache_key(data_path, skiprows, layer_names, layer_models, d_bounds, 
-                       theta_0, num_starts, num_epochs, lr, use_cuda):
+                       theta_0, num_starts, num_epochs, lr, use_cuda, std_path=None, use_autorange=False):
     """Genera un hash único basado en los parámetros de entrada del ajuste."""
     # Convertir layer_models a formato serializable (los dicts ya lo son)
     models_serializable = []
@@ -59,7 +60,8 @@ def _compute_cache_key(data_path, skiprows, layer_names, layer_models, d_bounds,
             models_serializable.append(str(m))
     
     key_data = {
-        'data_path': os.path.abspath(data_path),
+        'data_path': os.path.abspath(data_path) if data_path else None,
+        'std_path': os.path.abspath(std_path) if std_path else None,
         'skiprows': skiprows,
         'layer_names': layer_names,
         'layer_models': models_serializable,
@@ -69,6 +71,7 @@ def _compute_cache_key(data_path, skiprows, layer_names, layer_models, d_bounds,
         'num_epochs': num_epochs,
         'lr': lr,
         'use_cuda': use_cuda,
+        'use_autorange': use_autorange,
     }
     key_str = json.dumps(key_data, sort_keys=True, default=str)
     return hashlib.sha256(key_str.encode()).hexdigest()[:16]
@@ -76,7 +79,8 @@ def _compute_cache_key(data_path, skiprows, layer_names, layer_models, d_bounds,
 
 def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, layer_models=None, d_bounds=None,
                          theta_0=69.5, num_starts=100, num_epochs=150, lr=1.5, 
-                         use_cuda=False, cache_path=None, force_recalc=False):    
+                         use_cuda=False, cache_path=None, force_recalc=False,
+                         std_path=None, use_autorange=False, check_cancel_fn=None):    
     """
     Genera un ajuste elipsometrico de un stack de materiales.
 
@@ -111,7 +115,7 @@ def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, l
     if cache_path is not None and not force_recalc:
         os.makedirs(cache_path, exist_ok=True)
         cache_key = _compute_cache_key(data_path, skiprows, layer_names, layer_models,
-                                        d_bounds, theta_0, num_starts, num_epochs, lr, use_cuda)
+                                        d_bounds, theta_0, num_starts, num_epochs, lr, use_cuda, std_path=std_path, use_autorange=use_autorange)
         cache_file = os.path.join(cache_path, f"fit_{cache_key}.pkl")
         
         if os.path.exists(cache_file):
@@ -122,10 +126,18 @@ def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, l
                     cached['best_params'], cached['wl_exp'], cached['Is_exp'], cached['Ic_exp'])
     
     # ── CARGAR DATOS EXPERIMENTALES ──
-    wl_exp, psi_deg, delta_deg = np.loadtxt(data_path, skiprows=skiprows, unpack=True)
+    # Filtrar el footer de resúmenes (a partir de "# MINIMA:") en archivos raw
+    lines_exp = []
+    with open(data_path, 'r', encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            if '# MINIMA:' in line:
+                break
+            lines_exp.append(line)
+    from io import StringIO
+    wl_exp, psi_deg, delta_deg = np.loadtxt(StringIO("".join(lines_exp)), skiprows=skiprows, unpack=True)
 
     # Filtrar longitudes de onda mayores a 830 nm (ruido experimental)
-    mask = wl_exp <= 830.0
+    mask = (wl_exp <= 830.0) & (wl_exp >= 440.0)
     wl_exp = wl_exp[mask]
     psi_deg = psi_deg[mask]
     delta_deg = delta_deg[mask]
@@ -137,6 +149,57 @@ def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, l
     # Definir parámetros elipsométricos experimentales Is e Ic
     Is_exp = np.sin(2 * psi) * np.sin(delta)
     Ic_exp = np.sin(2 * psi) * np.cos(delta)
+
+    # Cargar y propagar desviaciones estándar si se provee std_path
+    std_Is_torch = None
+    std_Ic_torch = None
+    if std_path is not None:
+        lines_std = []
+        with open(std_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                if '# MINIMA:' in line:
+                    break
+                lines_std.append(line)
+        wl_std, std_psi_deg, std_delta_deg = np.loadtxt(StringIO("".join(lines_std)), skiprows=skiprows, unpack=True)
+        
+        # Eliminar longitudes de onda duplicadas en std para evitar divisiones por cero en interp1d
+        _, unique_indices = np.unique(wl_std, return_index=True)
+        unique_indices = np.sort(unique_indices)
+        wl_std = wl_std[unique_indices]
+        std_psi_deg = std_psi_deg[unique_indices]
+        std_delta_deg = std_delta_deg[unique_indices]
+        
+        # Interpolar desviaciones a las mismas lams de wl_exp
+        from scipy.interpolate import interp1d
+        std_psi_deg_fn = interp1d(wl_std, std_psi_deg, bounds_error=False, fill_value="extrapolate")
+        std_delta_deg_fn = interp1d(wl_std, std_delta_deg, bounds_error=False, fill_value="extrapolate")
+        
+        std_psi_deg_interp = std_psi_deg_fn(wl_exp)
+        std_delta_deg_interp = std_delta_deg_fn(wl_exp)
+        
+        # Convertir desviaciones a radianes
+        std_psi_rad = np.radians(std_psi_deg_interp)
+        std_delta_rad = np.radians(std_delta_deg_interp)
+        
+        # Propagación de errores para Is e Ic
+        dIs_dpsi = 2 * np.cos(2 * psi) * np.sin(delta)
+        dIc_dpsi = 2 * np.cos(2 * psi) * np.cos(delta)
+        
+        dIs_ddelta = np.sin(2 * psi) * np.cos(delta)
+        dIc_ddelta = -np.sin(2 * psi) * np.sin(delta)
+        
+        var_Is = (dIs_dpsi ** 2) * (std_psi_rad ** 2) + (dIs_ddelta ** 2) * (std_delta_rad ** 2)
+        var_Ic = (dIc_dpsi ** 2) * (std_psi_rad ** 2) + (dIc_ddelta ** 2) * (std_delta_rad ** 2)
+        
+        std_Is = np.sqrt(var_Is)
+        std_Ic = np.sqrt(var_Ic)
+        
+        # Clampear a un mínimo de 1e-5 para evitar divisiones por cero
+        std_Is = np.clip(std_Is, a_min=1e-5, a_max=None)
+        std_Ic = np.clip(std_Ic, a_min=1e-5, a_max=None)
+        
+        std_Is_torch = torch.tensor(std_Is, dtype=torch.float64)
+        std_Ic_torch = torch.tensor(std_Ic, dtype=torch.float64)
 
     # Pasarlos a formato tensor de PyTorch
     Is_exp_torch = torch.tensor(Is_exp, dtype=torch.float64)
@@ -179,28 +242,51 @@ def ajuste_elipsometrico(data_path, Data_R=None, skiprows=0, layer_names=None, l
     th_0_rad = np.radians(theta_0)
 
     # Ejecutar la optimización conjunta (espesores + parámetros de dispersión)
-    best_thicknesses, best_Is, best_Ic, best_params = fit_ellipsometry_torch(
-        n_list=n_list_torch,
-        d_bounds=d_bounds,
-        lams=lams_torch,
-        Is_exp=Is_exp_torch,
-        Ic_exp=Ic_exp_torch,
-        Data_R=Data_R,
-        th_0=th_0_rad,
-        num_starts=num_starts,
-        num_epochs=num_epochs,
-        lr=lr,
-        use_cuda=use_cuda,
-        layer_models=layer_models,
-        layer_names=layer_names
-    )
+    if use_autorange:
+        best_thicknesses, best_Is, best_Ic, best_params = autorange_fit_ellipsometry_torch(
+            n_list=n_list_torch,
+            d_bounds=d_bounds,
+            lams=lams_torch,
+            Is_exp=Is_exp_torch,
+            Ic_exp=Ic_exp_torch,
+            Data_R=Data_R,
+            th_0=th_0_rad,
+            num_starts=num_starts,
+            num_epochs=num_epochs,
+            lr=lr,
+            use_cuda=use_cuda,
+            layer_models=layer_models,
+            layer_names=layer_names,
+            std_Is=std_Is_torch,
+            std_Ic=std_Ic_torch,
+            check_cancel_fn=check_cancel_fn
+        )
+    else:
+        best_thicknesses, best_Is, best_Ic, best_params = fit_ellipsometry_torch(
+            n_list=n_list_torch,
+            d_bounds=d_bounds,
+            lams=lams_torch,
+            Is_exp=Is_exp_torch,
+            Ic_exp=Ic_exp_torch,
+            Data_R=Data_R,
+            th_0=th_0_rad,
+            num_starts=num_starts,
+            num_epochs=num_epochs,
+            lr=lr,
+            use_cuda=use_cuda,
+            layer_models=layer_models,
+            layer_names=layer_names,
+            std_Is=std_Is_torch,
+            std_Ic=std_Ic_torch,
+            check_cancel_fn=check_cancel_fn
+        )
     
     # ── GUARDAR EN CACHÉ ──
     if cache_path is not None:
         os.makedirs(cache_path, exist_ok=True)
         if cache_file is None:
             cache_key = _compute_cache_key(data_path, skiprows, layer_names, layer_models,
-                                            d_bounds, theta_0, num_starts, num_epochs, lr, use_cuda)
+                                            d_bounds, theta_0, num_starts, num_epochs, lr, use_cuda, std_path=std_path, use_autorange=use_autorange)
             cache_file = os.path.join(cache_path, f"fit_{cache_key}.pkl")
         
         with open(cache_file, 'wb') as f:

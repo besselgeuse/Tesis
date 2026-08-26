@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, DateTime, String, JSON, ForeignKey
+from sqlalchemy import Column, Integer, Text, DateTime, String, JSON, ForeignKey, Float
 from database import Base
 from datetime import datetime
 import bcrypt
@@ -21,6 +21,7 @@ class Stack(Base):
     
     # Relación con el usuario dueño del stack
     user_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    chi2_min = Column(Float, nullable=True)
 
 class User(Base):
     __tablename__ = "usuarios"

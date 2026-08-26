@@ -1,5 +1,22 @@
-Quiero modificar el rango de libertad que tienen para moverse los espesores y los parametros en el simulador. 
-Para esto lo que voy a hacer es subdividir el rango de busqueda y que el codigo se ejecute muchas veces
-hasta cubir el rango completo y despues quedarme con el que haya tenido el menor error cuadratico medio.
-Para hacer esto no sera necesario modificar la funcion de ajuste elipsometrico de torch, solo
-creare otra función que haga el trabajo de subdividir y ejecutar el codigo muchas veces. 
+1) al poner limites para los valores que pueden tomar los parametros muchas veces pasa que en el proceso
+de descender por el grandiente uno o mas de estos parametros se termina saturando y se queda "pegado" a
+uno de los limites sin llegar al valor optimo. La solución que termino implementando es despues de ese paso 
+ampliar el rango de los parametros optimizados y volver a ejecutar el simulador, osea el fit_ellipsometry_torch, el problema
+de todo esto es que es tedioso, la optimizacion suele requerir que amplie el rango varias veces y se me terminan acumulando
+demasiadas optimizaciones fallidas en la base de datos. Para solucionar esto quiero una función que llame a fit_ellipsometry_torch
+y verifique lo que yo estoy verificando manualmente, osea que si uno o mas de uno de los parametros esta muy cerca de su limite
+vuelva a ejecutar el fit_ellipsometry_torch con un rango mayor unicamente expandiendo el rango hacia el lado del limite
+que se alcanzo (inferior o superior), y al mismo tiempo que expande un poco el limite superior o inferior tiene que disminuir
+el correspondiente limite opuesto para que el rango no termine siendo una bestialidad enorme. Esta función debera llamarse 
+autorange y llamar a fit_ellipsometry_torch, una vez que encuentre un set de parametros donde ninguno de los mismos
+este cerca de su limite entonces ahi si devolver el resultado que posteriormente se tendra que guardar en la base de datos.
+Apesar de esto me gustaria que se pueda seguir usando la función de fit_ellipsometry_torch original de forma manual, de manera que
+esta de autorange tiene que ser opcional. Para esto despues de crear la función habra que actualizar el main.py y el html para 
+incluir la opción de usar autorange o no.  
+
+2) la aplicacion necesita un boton de stop para frenar una ejecucion de simulacion, ademas tiene que dejarme seleccionar
+capas que no tengan que ser optimizadas, por ejemplo una capa de SiO2 la cual se cuales son su parametros pero no son
+los que estan en la base de datos. De manera que esta capa tendria que poder seleccionar un boton que diga
+no optimizar y que me deje poner valores fijos para la misma.
+
+3) un valor extra que tiene que guardar la aplicacion es el chi cuadrado minimo para saber que tan bien salio el ajuste.
