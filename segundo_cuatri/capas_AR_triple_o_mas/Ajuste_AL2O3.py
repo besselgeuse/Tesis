@@ -120,7 +120,7 @@ layer_models = [
 
 # Rangos de espesores iniciales para las capas finitas (nm)
 # Ajustados al régimen físico de ~900 nm totales (~450 nm nanotubos + ~450 nm Al2O3)
-d_bounds = [(200.0, 700.0), (200.0, 700.0)]
+d_bounds = [(0.0, 100.0), (900.0, 1000.0)]
 
 # n_max_limits: límites máximos para n en cada capa (excepto aire/substraído)
 n_max_limits = [None, None, 2.0, None]
@@ -150,12 +150,12 @@ best_thicknesses, best_Is_curve, best_Ic_curve, best_params = autorange_fit_elli
     th_0=th_0_rad,
     num_starts=400,
     num_epochs=150,
-    lr=1.0,
+    lr=1.5,
     use_cuda=True,
     layer_models=layer_models,
     layer_names=layer_names,
     n_max_limits=n_max_limits,
-    max_attempts=10
+    max_attempts=1
 )
 
 # Reconstruir Psi y Delta calculadas
@@ -214,6 +214,4 @@ guardar_resultados_txt(
     salida_txt, DATA_dir, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,
     psi_exp, psi_fit, delta_exp, delta_fit, best_thicknesses, best_params
 )
-
-
 # %%
