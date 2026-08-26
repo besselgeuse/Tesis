@@ -17,9 +17,12 @@ import importlib.util
 import torch
 import torch.optim as optim
 
-# 1. Definimos la ruta exacta al archivo tmm_core.py de Simon
-
-tmm_path = r"../tmm_core.py"
+# 1. Definimos la ruta a tmm_core.py (priorizando el mismo directorio)
+import os
+_dir = os.path.dirname(__file__)
+tmm_path = os.path.join(_dir, "tmm_core.py")
+if not os.path.exists(tmm_path):
+    tmm_path = os.path.abspath(os.path.join(_dir, "..", "tmm_core.py"))
 
 # 2. Cargamos el módulo manualmente desde esa dirección
 spec = importlib.util.spec_from_file_location("tmm", tmm_path)
@@ -589,7 +592,7 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
 def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
                            num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
                            layer_models=None, layer_names=None, std_Is=None, std_Ic=None,
-                           check_cancel_fn=None):
+                           check_cancel_fn=None, n_max_limits=None):
     """
     Optimiza el espesor de un stack de capas delgadas y opcionalmente los parámetros 
     de modelos de dispersión (como Cauchy) usando PyTorch Autograd.
@@ -612,6 +615,8 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         {'model': 'bruggeman', 'f_air': 0.42} (fracción fija),
         {'model': 'bruggeman', 'f_bounds': (0.3, 0.7)} (fracción optimizable).
     - layer_names: Lista opcional con los nombres de las capas.
+    - n_max_limits: Tupla/lista opcional con límites máximos para el índice n en cada capa (e.g. (None, 2.5, None)).
+      Si para una semilla alguna λ produce n(λ) > límite en una capa con modelo de Cauchy, esa semilla se toma como inválida.
     """
     device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
     print(f"Ejecutando en dispositivo: {device}")
@@ -1085,7 +1090,37 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         Is_teo_final = torch.sin(2 * psi_teo_final) * torch.sin(delta_teo_final)
         Ic_teo_final = torch.sin(2 * psi_teo_final) * torch.cos(delta_teo_final)
         
-    best_idx = best_losses_per_start.argmin()
+    # Filtrar semillas válidas respetando n_max_limits y descartando NaNs/Infs
+    valid_mask = torch.ones(num_starts, dtype=torch.bool, device=device)
+    valid_mask = valid_mask & ~torch.isnan(best_losses_per_start) & ~torch.isinf(best_losses_per_start)
+    
+    if n_max_limits is not None and is_parametric:
+        for idx in range(num_layers):
+            limit = None
+            if len(n_max_limits) == num_layers and idx < len(n_max_limits):
+                limit = n_max_limits[idx]
+            elif len(n_max_limits) == num_finite_layers and 1 <= idx <= num_finite_layers:
+                limit = n_max_limits[idx - 1]
+            elif idx < len(n_max_limits):
+                limit = n_max_limits[idx]
+                
+            if limit is not None:
+                limit_val = float(limit)
+                n_layer_real = n_list_3d_final[:, idx, :].real
+                layer_valid = (n_layer_real <= limit_val).all(dim=-1)
+                valid_mask = valid_mask & layer_valid
+
+    valid_indices = torch.where(valid_mask)[0]
+    if len(valid_indices) > 0:
+        valid_losses = best_losses_per_start[valid_mask]
+        best_valid_sub_idx = valid_losses.argmin()
+        best_idx = valid_indices[best_valid_sub_idx].item()
+        if n_max_limits is not None:
+            print(f"Filtrado n_max: {len(valid_indices)}/{num_starts} semillas cumplen las condiciones de n_max <= {n_max_limits}.")
+    else:
+        if n_max_limits is not None:
+            print(f"Advertencia: Ninguna de las {num_starts} semillas cumplió con el límite n_max={n_max_limits}. Se seleccionará la mejor semilla sin aplicar el filtro.")
+        best_idx = best_losses_per_start.argmin().item()
     
     best_thicknesses = d_final_fisico[best_idx].cpu().detach().numpy()
     best_Is_curve = Is_teo_final[best_idx].cpu().detach().numpy()
@@ -1242,6 +1277,7 @@ def plot_js(titulo, e_porosa, e_densa, js,espesores_comparación = None,label_co
 def autorange_fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
                                      num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
                                      layer_models=None, layer_names=None, std_Is=None, std_Ic=None,
+                                     n_max_limits=None,
                                      tolerance=0.01, max_attempts=10, expansion_factor=0.25, contraction_factor=0.1,
                                      check_cancel_fn=None):
     """
@@ -1293,23 +1329,33 @@ def autorange_fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Dat
         # Verificar límite superior
         if (val_max - val_opt) < tolerance * width:
             val_max_new = val_max + expansion_factor * width
-            val_min_new = val_min + contraction_factor * width
             if max_abs is not None:
                 val_max_new = min(val_max_new, max_abs)
-            if min_abs is not None:
-                val_min_new = max(val_min_new, min_abs)
-            if val_min_new < val_max_new:
+            # Solo contraer val_min si val_max realmente se expandió
+            if val_max_new > val_max:
+                val_min_new = val_min + contraction_factor * width
+                if min_abs is not None:
+                    val_min_new = max(val_min_new, min_abs)
+            else:
+                val_min_new = val_min
+                
+            if (val_min_new != val_min or val_max_new != val_max) and val_min_new < val_max_new:
                 return val_min_new, val_max_new, True
                 
         # Verificar límite inferior
         elif (val_opt - val_min) < tolerance * width:
             val_min_new = val_min - expansion_factor * width
-            val_max_new = val_max - contraction_factor * width
             if min_abs is not None:
                 val_min_new = max(val_min_new, min_abs)
-            if max_abs is not None:
-                val_max_new = min(val_max_new, max_abs)
-            if val_min_new < val_max_new:
+            # Solo contraer val_max si val_min realmente se expandió
+            if val_min_new < val_min:
+                val_max_new = val_max - contraction_factor * width
+                if max_abs is not None:
+                    val_max_new = min(val_max_new, max_abs)
+            else:
+                val_max_new = val_max
+                
+            if (val_min_new != val_min or val_max_new != val_max) and val_min_new < val_max_new:
                 return val_min_new, val_max_new, True
                 
         return val_min, val_max, False
@@ -1333,14 +1379,16 @@ def autorange_fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Dat
                 n_list=n_list, d_bounds=d_bounds_work, lams=lams, Is_exp=Is_exp, Ic_exp=Ic_exp,
                 Data_R=Data_R, th_0=th_0, num_starts=num_starts, num_epochs=num_epochs, lr=lr,
                 use_cuda=use_cuda, layer_models=layer_models_work, layer_names=layer_names,
-                std_Is=std_Is, std_Ic=std_Ic, check_cancel_fn=check_cancel_fn
+                std_Is=std_Is, std_Ic=std_Ic, check_cancel_fn=check_cancel_fn,
+                n_max_limits=n_max_limits
             )
         else:
             best_thicknesses, best_Is_curve, best_Ic_curve = fit_ellipsometry_torch(
                 n_list=n_list, d_bounds=d_bounds_work, lams=lams, Is_exp=Is_exp, Ic_exp=Ic_exp,
                 Data_R=Data_R, th_0=th_0, num_starts=num_starts, num_epochs=num_epochs, lr=lr,
                 use_cuda=use_cuda, layer_models=None, layer_names=layer_names,
-                std_Is=std_Is, std_Ic=std_Ic, check_cancel_fn=check_cancel_fn
+                std_Is=std_Is, std_Ic=std_Ic, check_cancel_fn=check_cancel_fn,
+                n_max_limits=n_max_limits
             )
             best_params = None
 

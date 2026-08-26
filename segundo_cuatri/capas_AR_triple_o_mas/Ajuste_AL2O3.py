@@ -119,7 +119,11 @@ layer_models = [
 ]
 
 # Rangos de espesores iniciales para las capas finitas (nm)
-d_bounds = [(0, 100.0), (400, 1000)]
+# Ajustados al régimen físico de ~900 nm totales (~450 nm nanotubos + ~450 nm Al2O3)
+d_bounds = [(200.0, 700.0), (200.0, 700.0)]
+
+# n_max_limits: límites máximos para n en cada capa (excepto aire/substraído)
+n_max_limits = [None, None, 2.0, None]
 
 # CONSTRUCCIÓN DE TENSORES Y OPTIMIZACIÓN AUTORANGE
 n_list_np = []
@@ -150,6 +154,7 @@ best_thicknesses, best_Is_curve, best_Ic_curve, best_params = autorange_fit_elli
     use_cuda=True,
     layer_models=layer_models,
     layer_names=layer_names,
+    n_max_limits=n_max_limits,
     max_attempts=10
 )
 
