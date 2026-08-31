@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from database import engine, SessionLocal
+from sqlalchemy import text
 from typing import Annotated, List, Tuple, Optional
 from sqlalchemy.orm import Session
 from fit_elipsometrico import ajuste_elipsometrico
@@ -30,11 +31,24 @@ API_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(API_DIR, 'static')
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-data_path='./Datos-09-6/TiO2_Si_SI_SP_S1.txt'
-Data_R= None#'./Datos-04-6/1TIO2-2.txt'
+data_path='../../segundo_cuatri/Files/2026.08.18/Al2O3_nanotubes.5-med1_media.txt'
+std_path= None
+Data_R = None
 
 #creo la tabla
 models.Base.metadata.create_all(bind=engine)
+
+# Migración automática para agregar chi2_min si no existe
+try:
+    with engine.begin() as conn:
+        # Configurar un timeout de lock de sesión bajo (3 segundos) para evitar bloqueos del arranque de la app
+        conn.execute(text("SET SESSION lock_wait_timeout = 3"))
+        res = conn.execute(text("SHOW COLUMNS FROM stacks LIKE 'chi2_min'"))
+        if not res.fetchone():
+            conn.execute(text("ALTER TABLE stacks ADD COLUMN chi2_min FLOAT NULL"))
+            print("Migración de base de datos exitosa: Columna 'chi2_min' añadida a la tabla 'stacks'.")
+except Exception as e:
+    print(f"Advertencia durante la migración automática de base de datos: {e}")
 
 def get_db():
     db = SessionLocal()
@@ -92,13 +106,21 @@ class Layer(BaseModel):
 class Stack(BaseModel):
     name: str
     layers: List[Layer]
+# Diccionario global para manejar peticiones de cancelación de simulaciones activas
+cancel_flags = {}
+
 # 4. Definimos los parámetros de la simulación/ajuste
 class SimParam(BaseModel):
     num_starts: int = 100
     num_epochs: int = 200
     lr: float = 1.5
     use_cuda: bool = True
+    use_autorange: bool = False
     th_0: float = 69.5
+    data_path: Optional[str] = data_path
+    std_path: Optional[str] = std_path
+    skiprows: Optional[int] = None
+    sim_id: Optional[str] = None
     stack: Stack
 
 @app.get("/")
@@ -137,6 +159,13 @@ async def simular_stack(
     db: db_dependency, 
     usuario_actual: Annotated[models.User, Depends(obtener_usuario_actual)]
 ):
+    sim_id = registro.sim_id or f"temp_{datetime.utcnow().timestamp()}"
+    cancel_flags[sim_id] = False
+    
+    def check_cancel():
+        if cancel_flags.get(sim_id, False):
+            raise InterruptedError("Cancelado por el usuario")
+            
     try:
         # 1. Extraer nombres y modelos en el formato esperado por el script físico
         layer_names = [layer.name for layer in registro.stack.layers]
@@ -158,11 +187,21 @@ async def simular_stack(
         
         d_bounds = [(layer.d_min, layer.d_max) for layer in registro.stack.layers[1:-1]]
 
+        # Determinar rutas y skiprows a usar (con fallback a valores globales si no se especifican)
+        selected_data_path = registro.data_path if registro.data_path is not None else data_path
+        selected_std_path = registro.std_path if registro.std_path is not None else None
+        
+        if registro.skiprows is not None:
+            selected_skiprows = registro.skiprows
+        else:
+            selected_skiprows = 1 if registro.data_path is not None else 5
+
         # 2. Ejecutar la simulación con Autograd
         best_thicknesses, best_Is, best_Ic, best_params, wl_exp, Is_exp, Ic_exp = ajuste_elipsometrico(
-            data_path=data_path,
+            data_path=selected_data_path,
+            std_path=selected_std_path,
             Data_R=Data_R,
-            skiprows=5,
+            skiprows=selected_skiprows,
             layer_names=layer_names,
             layer_models=layer_models,
             d_bounds=d_bounds,
@@ -171,24 +210,28 @@ async def simular_stack(
             num_epochs=registro.num_epochs,
             lr=registro.lr,
             use_cuda=registro.use_cuda,
+            use_autorange=registro.use_autorange,
+            check_cancel_fn=check_cancel
         )
 
         # 3. Construir la lista estructurada de capas para guardar en la BD
         layer_db = []
-        o_idx = 0
+        n_layers = len(layer_names)
         for idx, name in enumerate(layer_names):
+            # Las capas intermedias tienen espesor en best_thicknesses
+            is_intermediate = (0 < idx < n_layers - 1)
+            t_val = float(best_thicknesses[idx - 1]) if is_intermediate else None
+
             if layer_models[idx] is None:
                 # Capa estática (como aire o silicio)
                 layer_db.append({
                     "name": name,
                     "model": None,
-                    "thickness": None,
+                    "thickness": t_val,
                     "params": {}
                 })
             else:
                 # Capa parametrizada y optimizada
-                t_val = float(best_thicknesses[o_idx])
-                
                 # Extraer parámetros (A, B, C o f_air, linked_to) de forma segura y libre de colisiones
                 sub_dict = best_params.get(idx) or best_params.get(name, {})
                 params_cleaned = {}
@@ -206,7 +249,6 @@ async def simular_stack(
                     "thickness": t_val,
                     "params": params_cleaned
                 })
-                o_idx += 1        
         # 4. Crear el modelo de base de datos
         stack_db = models.Stack(
             name=registro.stack.name,
@@ -216,7 +258,8 @@ async def simular_stack(
             wl_exp=wl_exp.tolist(),  # Guardar la lista de longitudes de onda experimental
             Is_exp=Is_exp.tolist(),
             Ic_exp=Ic_exp.tolist(),
-            user_id=usuario_actual.id
+            user_id=usuario_actual.id,
+            chi2_min=best_params.get('chi2_min') if best_params else None
         )
 
         db.add(stack_db)
@@ -224,6 +267,7 @@ async def simular_stack(
         db.commit()
 
         return {
+            "status": "success",
             "message": "Stack registrado exitosamente",
             "stack": {
                 "id": stack_db.id,
@@ -234,12 +278,26 @@ async def simular_stack(
                 "wl_exp": stack_db.wl_exp,
                 "Is_exp": stack_db.Is_exp,
                 "Ic_exp": stack_db.Ic_exp,
+                "chi2_min": stack_db.chi2_min,
                 "fecha": str(stack_db.created_at)
             }
         }
 
-    except Exception as e:
+    except (InterruptedError, Exception) as e:
+        db.rollback()
+        if isinstance(e, InterruptedError) or "Cancelado por el usuario" in str(e):
+            print(f"[API] Simulación {sim_id} cancelada activamente por el usuario.")
+            return {"status": "cancelled", "message": "Simulación cancelada por el usuario"}
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    finally:
+        cancel_flags.pop(sim_id, None)
+
+@app.post("/cancelar_simulacion/{sim_id}")
+def cancelar_simulacion(sim_id: str, usuario_actual: Annotated[models.User, Depends(obtener_usuario_actual)]):
+    """Establece la bandera de cancelación para una simulación en curso."""
+    cancel_flags[sim_id] = True
+    print(f"[API] Solicitud de cancelación recibida para simulación: {sim_id}")
+    return {"message": "Petición de cancelación registrada"}
 
 @app.get("/mostrar_resultados", status_code=status.HTTP_200_OK)
 async def obtener_resultados(
@@ -259,6 +317,7 @@ async def obtener_resultados(
             "wl_exp": s.wl_exp,
             "Is_exp": s.Is_exp,
             "Ic_exp": s.Ic_exp,
+            "chi2_min": s.chi2_min,
             "fecha": str(s.created_at),
         })
     return resultado
@@ -283,6 +342,7 @@ async def obtener_resultados_id(
         "wl_exp": stack.wl_exp,
         "Is_exp": stack.Is_exp,
         "Ic_exp": stack.Ic_exp,
+        "chi2_min": stack.chi2_min,
         "fecha": str(stack.created_at),
     }
 

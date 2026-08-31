@@ -1,0 +1,6 @@
+esta muestra es la segunda recocida de TiO2 por Daniel,
+según el es muy gruesa. La misma se componia de Ti depositado
+por sputtering sobre SiO2 y Si antes de ser recocida a 600 grados.
+Tenía la caracteristica de tener una punta de SiO2 que no había
+sido depositada con Ti y sobre la cual pude medir el espesor del 
+SiO2 por separado.

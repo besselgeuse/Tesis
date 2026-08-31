@@ -255,23 +255,15 @@ def calculate_RT(stack, materials, lams, pol='s', th_0=0, thicks=None):
         print('####finished####',)
         return Rs.reshape(*sizes,n_lams), Ts.reshape(*sizes,n_lams)
 
-              
 
-
-
-def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s', th_0=0.0, num_starts=50, num_epochs=150, lr=2.0, use_cuda=False):
+def calculate_RT_torch(stack, materials, lams, weights=None, pol='s', th_0=0.0, num_starts=50, num_epochs=150, lr=2.0, use_cuda=False):
     """
     Optimiza el espesor de un stack de capas delgadas usando PyTorch Autograd.
     
     Parámetros:
-    - n_list: Tensor complejo de PyTorch (torch.complex128) con los índices [num_capas, num_lams].
-    - d_bounds: Lista que define los límites o valores fijos para cada capa finita.
-                Puede contener:
-                - Tupla/Lista (min, max): para optimizar esa capa dentro de dichos límites.
-                - Float/Int o Tupla (val, val): para mantener esa capa con un espesor constante fijo.
-    - lams: Tensor con las longitudes de onda.
-    - c_list: Lista opcional indicando 'c' (coherente) o 'i' (incoherente) para cada capa.
-              Si se provee, utiliza la versión inc_tmm_torch para cálculos gruesos.
+    - stack: Lista de capas del stack óptico [[d_bounds/d_fijo, 'material', 'c'/'i'], ...].
+    - materials: Diccionario con funciones interpoladoras para cada material.
+    - lams: Vector o Tensor con las longitudes de onda [nm].
     - weights: Tensor opcional con los pesos (por ejemplo, espectro solar * IQE * wavelength)
                para realizar una optimización por reflectancia ponderada (Jsc).
     - pol: Polarización, 's' o 'p'.
@@ -284,9 +276,22 @@ def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s
     device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
     print(f"Ejecutando en dispositivo: {device}")
     
-    # Mover tensores al dispositivo
-    n_list = n_list.to(device)
-    lams = lams.to(device)
+    # 1. Asegurar que lams sea un tensor de PyTorch en el dispositivo
+    if not isinstance(lams, torch.Tensor):
+        lams_np = np.array(lams, dtype=np.float64)
+        lams = torch.tensor(lams_np, dtype=torch.float64, device=device)
+    else:
+        lams_np = lams.cpu().numpy()
+        lams = lams.to(device)
+
+    # 2. Generar n_list, d_list, c_list a partir de stack y materials
+    n_list_np, d_list, c_list = stack2tmm(stack, materials, lams_np, add_inf=False)
+    
+    # Convertir n_list (lista de arrays NumPy) a Tensor de PyTorch
+    n_list = torch.tensor(np.array(n_list_np), dtype=torch.complex128, device=device)
+    
+    # d_bounds corresponde a las capas finitas internas
+    d_bounds = d_list[1:-1]
     
     if weights is not None:
         if not isinstance(weights, torch.Tensor):
@@ -328,8 +333,6 @@ def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s
         raise ValueError("No se definieron capas optimizables en d_bounds (todas son fijas).")
         
     # 2. INICIALIZACIÓN MULTI-START EN EL ESPACIO NO ACOTODO (LOGIT)
-    # Inicializamos d_initial en el espacio físico dentro de [d_min, d_max],
-    # y luego lo mapeamos a d_opt no acotado para usar el truco del Sigmoide.
     d_initial = torch.zeros((num_starts, num_opt_layers), dtype=torch.float64, device=device)
     opt_idx = 0
     for idx, opt in enumerate(is_optimizable):
@@ -359,7 +362,7 @@ def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s
         for idx, opt in enumerate(is_optimizable):
             if opt:
                 d_min, d_max = opt_bounds[o_idx]
-                # Mapeo sigmoide: garantiza d_min <= espesor <= d_max estrictamente
+                # Mapeo sigmoide: garantiza d_min <= espesor <= d_max strictly
                 col = d_min + (d_max - d_min) * torch.sigmoid(d_opt_tensor[:, o_idx])
                 d_fisico_cols.append(col)
                 o_idx += 1
@@ -368,6 +371,8 @@ def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s
                 col = torch.full((d_opt_tensor.shape[0],), val, dtype=torch.float64, device=device)
                 d_fisico_cols.append(col)
         return torch.stack(d_fisico_cols, dim=1)
+    
+    use_inc = 'i' in c_list[1:-1] if c_list is not None else False
     
     # 4. BUCLE DE OPTIMIZACIÓN (sin loop sobre semillas)
     for epoch in range(num_epochs):
@@ -381,7 +386,7 @@ def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s
         d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
         
         # UNA SOLA llamada para TODAS las semillas
-        if c_list is None:
+        if not use_inc:
             result = tmm.coh_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d,
                                         th_0=th_0, lam_vac=lams)
         else:
@@ -413,7 +418,7 @@ def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s
         d_final_fisico = reconstruct_d_fisico(d_opt)
         d_full = torch.cat([inf_col, d_final_fisico, inf_col], dim=1)
         d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
-        if c_list is None:
+        if not use_inc:
             result = tmm.coh_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d,
                                         th_0=th_0, lam_vac=lams)
         else:
@@ -559,7 +564,8 @@ def coh_tmm_torch_batched(pol, n_list, d_list, th_0, lam_vac):
 
 def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
                            num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
-                           layer_models=None, layer_names=None):
+                           layer_models=None, layer_names=None, std_Is=None, std_Ic=None,
+                           check_cancel_fn=None):
     """
     Optimiza el espesor de un stack de capas delgadas y opcionalmente los parámetros 
     de modelos de dispersión (como Cauchy) usando PyTorch Autograd.
@@ -584,7 +590,21 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
     - layer_names: Lista opcional con los nombres de las capas.
     """
     device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
-    print(f"Ejecutando en dispositivo: {device}")
+    if use_cuda and not torch.cuda.is_available():
+        print("Ejecutando en dispositivo: cpu (CUDA no disponible en el sistema)")
+    else:
+        print(f"Ejecutando en dispositivo: {device}")
+    
+    if std_Is is not None:
+        if not isinstance(std_Is, torch.Tensor):
+            std_Is = torch.tensor(std_Is, dtype=torch.float64, device=device)
+        else:
+            std_Is = std_Is.to(device)
+    if std_Ic is not None:
+        if not isinstance(std_Ic, torch.Tensor):
+            std_Ic = torch.tensor(std_Ic, dtype=torch.float64, device=device)
+        else:
+            std_Ic = std_Ic.to(device)
     
     # Asegurar que lams, Is_exp, Ic_exp estén en el dispositivo
     if not isinstance(lams, torch.Tensor):
@@ -644,8 +664,10 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         
     # 1. ANALIZAR MODELOS DE DISPERSIÓN PARAMÉTRICOS
     is_parametric = False
+    is_parametric_optimizable = False
     disp_layers = []
-    total_disp_params = 0
+    total_disp_params = 0      # Todos los parámetros (fijos + optimizables)
+    total_opt_disp_params = 0  # Solo los parámetros optimizables (para p_opt)
     
     if layer_models is not None:
         for idx, model in enumerate(layer_models):
@@ -664,16 +686,13 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                 # Definir cantidad de parámetros y valores por defecto
                 if model_type == 'cauchy':
                     num_p = 3
-                    # A en [1.0, 3.0], B y C en [-1.0, 1.0]
                     default_bounds = [(0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0)]
                     default_initial = [3.0, 0.0, 0.0]
                 elif model_type == 'cauchy_absorbent':
                     num_p = 6
-                    # A en [1.0, 3.0], B y C en [-1.0, 1.0], D en [0.0, 2.0], E y F en [-1.0, 1.0]
                     default_bounds = [(0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0), (0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0)]
                     default_initial = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
                 elif model_type == 'bruggeman':
-                    # Extraer configuración de fracción de aire
                     if isinstance(model, dict):
                         f_air_fixed = model.get('f_air', None)
                         f_bounds = model.get('f_bounds', None)
@@ -682,7 +701,6 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                         f_bounds = None
                     
                     if f_bounds is not None:
-                        # f_air es optimizable
                         num_p = 1
                         if isinstance(f_bounds[0], (list, tuple)):
                             fb = f_bounds[0]
@@ -691,7 +709,6 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                         default_bounds = [tuple(fb)]
                         default_initial = [(fb[0] + fb[1]) / 2.0]
                     else:
-                        # f_air es fijo
                         num_p = 0
                         default_bounds = []
                         default_initial = []
@@ -702,16 +719,43 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                     bounds = default_bounds
                 if initial is None:
                     initial = default_initial
-                    
+                
+                # Analizar cuáles de estos parámetros son fijos y cuáles optimizables
+                params_optimizable = []
+                opt_param_bounds = []
+                fixed_param_values = {}
+                
+                for k in range(num_p):
+                    p_b = bounds[k]
+                    if isinstance(p_b, (list, tuple)):
+                        p_min, p_max = float(p_b[0]), float(p_b[1])
+                        if p_min == p_max:
+                            params_optimizable.append(False)
+                            fixed_param_values[k] = p_min
+                        else:
+                            params_optimizable.append(True)
+                            opt_param_bounds.append((p_min, p_max))
+                    else:
+                        params_optimizable.append(False)
+                        fixed_param_values[k] = float(p_b)
+                
+                num_opt_p = sum(params_optimizable)
+                if num_opt_p > 0:
+                    is_parametric_optimizable = True
+                
                 layer_info = {
                     'layer_idx': idx,
                     'model_type': model_type,
                     'param_bounds': bounds,
                     'param_initial': initial,
                     'num_params': num_p,
-                    'start_idx': total_disp_params
+                    'params_optimizable': params_optimizable,
+                    'opt_param_bounds': opt_param_bounds,
+                    'fixed_param_values': fixed_param_values,
+                    'num_opt_params': num_opt_p,
+                    'start_idx': total_opt_disp_params  # Índice en el tensor p_opt optimizable
                 }
-                # Guardar configuración de fracción para Bruggeman
+                
                 if model_type == 'bruggeman':
                     if isinstance(model, dict) and 'f_bounds' in model:
                         layer_info['f_optimizable'] = True
@@ -724,9 +768,10 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                 
                 disp_layers.append(layer_info)
                 total_disp_params += num_p
+                total_opt_disp_params += num_opt_p
                 
     if is_parametric:
-        print(f"Modelos paramétricos activos: {[d['model_type'] for d in disp_layers]} | Total parámetros de dispersión: {total_disp_params}")
+        print(f"Modelos paramétricos activos: {[d['model_type'] for d in disp_layers]} | Parámetros de dispersión: {total_opt_disp_params} optimizables, {total_disp_params - total_opt_disp_params} fijos")
     
     # 2. ANALIZAR ESPESORES OPTIMIZABLES Y FIJOS
     is_optimizable = []
@@ -764,27 +809,37 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
     d_opt = d_initial.clone().detach().requires_grad_(True)
     
     # 4. INICIALIZACIÓN MULTI-START DE PARÁMETROS DE DISPERSIÓN EN LOGITS
-    if is_parametric:
-        p_initial = torch.zeros((num_starts, total_disp_params), dtype=torch.float64, device=device)
+    if is_parametric_optimizable:
+        p_initial = torch.zeros((num_starts, total_opt_disp_params), dtype=torch.float64, device=device)
         for d_lay in disp_layers:
             start_idx = d_lay['start_idx']
-            bounds = d_lay['param_bounds']
-            initial = d_lay['param_initial']
-            
+            o_p_idx = 0
             for k in range(d_lay['num_params']):
-                p_min, p_max = float(bounds[k][0]), float(bounds[k][1])
-                # Semilla inicial en un entorno alrededor de initial
-                init_val = float(initial[k])
-                # Unificar aleatorización dentro de límites
-                p_init_phys = torch.empty(num_starts, device=device).uniform_(p_min, p_max)
-                p = (p_init_phys - p_min) / (p_max - p_min)
-                p = torch.clamp(p, 1e-7, 1.0 - 1e-7)
-                p_initial[:, start_idx + k] = torch.log(p / (1.0 - p))
+                if d_lay['params_optimizable'][k]:
+                    p_min, p_max = d_lay['opt_param_bounds'][o_p_idx]
+                    p_init_phys = torch.empty(num_starts, device=device).uniform_(p_min, p_max)
+                    p = (p_init_phys - p_min) / (p_max - p_min)
+                    p = torch.clamp(p, 1e-7, 1.0 - 1e-7)
+                    p_initial[:, start_idx + o_p_idx] = torch.log(p / (1.0 - p))
+                    o_p_idx += 1
                 
         p_opt = p_initial.clone().detach().requires_grad_(True)
-        optimizer = optim.Adam([d_opt, p_opt], lr=lr)
+        
+    # Filtrar tensores que tengan parámetros reales para optimizar
+    params_to_opt = []
+    if num_opt_layers > 0:
+        params_to_opt.append(d_opt)
+    if is_parametric_optimizable:
+        params_to_opt.append(p_opt)
+        
+    if len(params_to_opt) > 0:
+        optimizer = optim.Adam(params_to_opt, lr=lr)
     else:
-        optimizer = optim.Adam([d_opt], lr=lr)
+        # Mock/Dummy Optimizer si no hay variables optimizables
+        class DummyOptimizer:
+            def zero_grad(self): pass
+            def step(self): pass
+        optimizer = DummyOptimizer()
         
     print(f"Iniciando optimización elipsométrica con Autograd ({num_starts} semillas en paralelo)...")
     
@@ -828,14 +883,19 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
             if d_lay['model_type'] in ['cauchy', 'cauchy_absorbent']:
                 idx = d_lay['layer_idx']
                 start_idx = d_lay['start_idx']
-                bounds = d_lay['param_bounds']
                 model_type = d_lay['model_type']
                 
                 p_phys_list = []
+                o_p_idx = 0
                 for k in range(d_lay['num_params']):
-                    p_min, p_max = float(bounds[k][0]), float(bounds[k][1])
-                    p_logit = p_opt_tensor[:, start_idx + k]
-                    p_phys = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
+                    if d_lay['params_optimizable'][k]:
+                        p_min, p_max = d_lay['opt_param_bounds'][o_p_idx]
+                        p_logit = p_opt_tensor[:, start_idx + o_p_idx]
+                        p_phys = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
+                        o_p_idx += 1
+                    else:
+                        val = d_lay['fixed_param_values'][k]
+                        p_phys = torch.full((num_starts,), val, dtype=torch.float64, device=device)
                     p_phys_list.append(p_phys)
                     
                 if model_type == 'cauchy':
@@ -870,14 +930,17 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                 n_air = torch.ones_like(n_base)
                 
                 # Determinar f_air: fijo o desde parámetros optimizables
-                if d_lay.get('f_optimizable', False):
+                if d_lay.get('f_optimizable', False) and d_lay['params_optimizable'][0]:
                     start_idx = d_lay['start_idx']
-                    p_min, p_max = float(d_lay['param_bounds'][0][0]), float(d_lay['param_bounds'][0][1])
+                    p_min, p_max = d_lay['opt_param_bounds'][0]
                     p_logit = p_opt_tensor[:, start_idx]
                     f_air = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
                     f_air = f_air.unsqueeze(1)  # [num_starts, 1] para broadcasting
                 else:
-                    f_air = d_lay.get('f_air', 0.5)
+                    if d_lay.get('f_optimizable', False):
+                        f_air = d_lay['fixed_param_values'][0]
+                    else:
+                        f_air = d_lay.get('f_air', 0.5)
                 
                 # Bruggeman directamente sobre tensores (mantiene Autograd)
                 layer_tensors[idx] = n_eff_torch(n_base, n_air, f_air)
@@ -885,8 +948,17 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         # Apilar en tensor 3D sin operaciones in-place
         return torch.stack(layer_tensors, dim=1)
 
+    # Registrar el mínimo histórico de cada semilla (semilla -> mejor pérdida, logits)
+    best_losses_per_start = torch.full((num_starts,), float('inf'), dtype=torch.float64, device=device)
+    best_d_opt_data = d_opt.clone().detach()
+    if is_parametric_optimizable:
+        best_p_opt_data = p_opt.clone().detach()
+
     # 5. BUCLE DE OPTIMIZACIÓN
     for epoch in range(num_epochs):
+        if check_cancel_fn is not None:
+            check_cancel_fn()
+            
         optimizer.zero_grad()
         
         d_fisico = reconstruct_d_fisico(d_opt)
@@ -894,24 +966,21 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
         
         if is_parametric:
-            n_list_3d = reconstruct_n_list_batched(p_opt)
+            n_list_3d = reconstruct_n_list_batched(p_opt if is_parametric_optimizable else None)
             res_s = coh_tmm_torch_batched(pol='s', n_list=n_list_3d, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p = coh_tmm_torch_batched(pol='p', n_list=n_list_3d, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             if Data_R is not None:
-                # Como el ángulo de incidencia es 0 entonces s y p son iguales
                 res_0deg = coh_tmm_torch_batched(pol='s', n_list=n_list_3d, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
         else:
             res_s = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p = tmm.coh_tmm_torch(pol='p', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             if Data_R is not None:
-                # Como el ángulo de incidencia es 0 entonces s y p son iguales
                 res_0deg = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
             
         r_s = res_s['r']
         r_p = res_p['r']
         
         if Data_R is not None:
-            # R_teo = |r_0deg|^2. res_0deg['r'] es complejo, por lo que usamos (r * r.conj()).real
             R_teo = (res_0deg['r'] * res_0deg['r'].conj()).real
             error_R = (R_teo - R_exp) ** 2
         
@@ -922,47 +991,68 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         Is_teo = torch.sin(2 * psi_teo) * torch.sin(delta_teo)
         Ic_teo = torch.sin(2 * psi_teo) * torch.cos(delta_teo)
         
-        error_Is = (Is_teo - Is_exp) ** 2
-        error_Ic = (Ic_teo - Ic_exp) ** 2
-        
-        if Data_R is not None:
-            loss_per_start = (error_Is + error_Ic + error_R).mean(dim=-1)
+        # Calcular grados de libertad (dof) para Chi2 Reducido
+        num_free_params = num_opt_layers
+        if is_parametric:
+            num_free_params += total_opt_disp_params
+        dof = 2 * num_wl - num_free_params
+        if dof < 1:
+            dof = 1
+            
+        if std_Is is not None and std_Ic is not None:
+            error_Is = ((Is_teo - Is_exp) / std_Is) ** 2
+            error_Ic = ((Ic_teo - Ic_exp) / std_Ic) ** 2
+            if Data_R is not None:
+                loss_per_start = (error_Is + error_Ic).sum(dim=-1) / dof + error_R.mean(dim=-1)
+            else:
+                loss_per_start = (error_Is + error_Ic).sum(dim=-1) / dof
         else:
-            loss_per_start = (error_Is + error_Ic).mean(dim=-1)
+            error_Is = (Is_teo - Is_exp) ** 2
+            error_Ic = (Ic_teo - Ic_exp) ** 2
+            if Data_R is not None:
+                loss_per_start = (error_Is + error_Ic + error_R).mean(dim=-1)
+            else:
+                loss_per_start = (error_Is + error_Ic).mean(dim=-1)
             
         loss = loss_per_start.sum()
         
-        loss.backward()
-        optimizer.step()
+        if len(params_to_opt) > 0:
+            loss.backward()
+            optimizer.step()
         
-        # Prevenir saturación de sigmoid: clampear logits para que
-        # sigmoid se mantenga en [0.0067, 0.9933] y los gradientes no se anulen
+        # Prevenir saturación de sigmoid: clampear logits
         with torch.no_grad():
             d_opt.data.clamp_(-5, 5)
-            if is_parametric:
+            if is_parametric_optimizable:
                 p_opt.data.clamp_(-5, 5)
+                
+            # Actualizar el histórico del mínimo real por semilla
+            improved = loss_per_start < best_losses_per_start
+            if improved.any():
+                best_losses_per_start[improved] = loss_per_start[improved]
+                best_d_opt_data[improved] = d_opt.data[improved]
+                if is_parametric_optimizable:
+                    best_p_opt_data[improved] = p_opt.data[improved]
         
         if epoch % 50 == 0 or epoch == num_epochs - 1:
             mejor_loss = loss_per_start.min().item()
-            print(f"Epoch {epoch}/{num_epochs} | Mejor Loss (MSE): {mejor_loss:.6f}")
+            mejor_historico = best_losses_per_start.min().item()
+            metric_name = "Chi2 Red" if (std_Is is not None and std_Ic is not None) else "MSE"
+            print(f"Epoch {epoch}/{num_epochs} | Mejor Loss Actual ({metric_name}): {mejor_loss:.6f} | Mínimo Histórico: {mejor_historico:.6f}")
             
-    # 6. EXTRACCIÓN DEL MÍNIMO GLOBAL
+    # 6. EXTRACCIÓN DEL MÍNIMO GLOBAL (USANDO LOS LOGITS HISTÓRICOS MÍNIMOS)
     with torch.no_grad():
-        d_final_fisico = reconstruct_d_fisico(d_opt)
+        d_final_fisico = reconstruct_d_fisico(best_d_opt_data)
         d_full = torch.cat([inf_col, d_final_fisico, inf_col], dim=1)
         d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
         
         if is_parametric:
-            n_list_3d_final = reconstruct_n_list_batched(p_opt)
+            n_list_3d_final = reconstruct_n_list_batched(best_p_opt_data if is_parametric_optimizable else None)
             res_s_final = coh_tmm_torch_batched(pol='s', n_list=n_list_3d_final, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p_final = coh_tmm_torch_batched(pol='p', n_list=n_list_3d_final, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
-            if Data_R is not None:
-                res_0deg_final = coh_tmm_torch_batched(pol='s', n_list=n_list_3d_final, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
         else:
             res_s_final = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
             res_p_final = tmm.coh_tmm_torch(pol='p', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
-            if Data_R is not None:
-                res_0deg_final = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=0.0, lam_vac=lams)
             
         r_s_final = res_s_final['r']
         r_p_final = res_p_final['r']
@@ -974,23 +1064,15 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
         Is_teo_final = torch.sin(2 * psi_teo_final) * torch.sin(delta_teo_final)
         Ic_teo_final = torch.sin(2 * psi_teo_final) * torch.cos(delta_teo_final)
         
-        error_Is_final = (Is_teo_final - Is_exp) ** 2
-        error_Ic_final = (Ic_teo_final - Ic_exp) ** 2
-        
-        if Data_R is not None:
-            R_teo_final = (res_0deg_final['r'] * res_0deg_final['r'].conj()).real
-            error_R_final = (R_teo_final - R_exp) ** 2
-            loss_final = (error_Is_final + error_Ic_final + error_R_final).mean(dim=-1)
-        else:
-            loss_final = (error_Is_final + error_Ic_final).mean(dim=-1)
-        
-    best_idx = loss_final.argmin()
+    best_idx = best_losses_per_start.argmin()
     
     best_thicknesses = d_final_fisico[best_idx].cpu().detach().numpy()
     best_Is_curve = Is_teo_final[best_idx].cpu().detach().numpy()
     best_Ic_curve = Ic_teo_final[best_idx].cpu().detach().numpy()
     
     best_params = {}
+    best_params['chi2_min'] = float(best_losses_per_start[best_idx].item())
+    
     if is_parametric:
         with torch.no_grad():
             for d_lay in disp_layers:
@@ -1005,12 +1087,18 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                     layer_name = f"layer_{idx}"
                     
                 p_best_phys = []
+                o_p_idx = 0
                 for k in range(d_lay['num_params']):
-                    p_min, p_max = float(bounds[k][0]), float(bounds[k][1])
-                    p_logit = p_opt[best_idx, start_idx + k]
-                    p_phys = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
-                    p_best_phys.append(p_phys.item())
-                    
+                    if d_lay['params_optimizable'][k]:
+                        p_logit = best_p_opt_data[best_idx, start_idx + o_p_idx]
+                        p_min, p_max = d_lay['opt_param_bounds'][o_p_idx]
+                        p_phys = p_min + (p_max - p_min) * torch.sigmoid(p_logit)
+                        p_best_phys.append(p_phys.item())
+                        o_p_idx += 1
+                    else:
+                        val = d_lay['fixed_param_values'][k]
+                        p_best_phys.append(val)
+                        
                 if model_type == 'cauchy':
                     layer_params = {
                         'model': 'cauchy',
@@ -1033,16 +1121,17 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                         'model': 'bruggeman_EMA',
                         'linked_to': layer_names[idx+1] if layer_names else f'layer_{idx+1}',
                     }
-                    if d_lay.get('f_optimizable', False):
-                        # Extraer f_air optimizado
-                        start_idx_f = d_lay['start_idx']
-                        p_min_f, p_max_f = float(d_lay['param_bounds'][0][0]), float(d_lay['param_bounds'][0][1])
-                        p_logit_f = p_opt[best_idx, start_idx_f]
+                    if d_lay.get('f_optimizable', False) and d_lay['params_optimizable'][0]:
+                        p_logit_f = best_p_opt_data[best_idx, start_idx]
+                        p_min_f, p_max_f = d_lay['opt_param_bounds'][0]
                         f_opt = p_min_f + (p_max_f - p_min_f) * torch.sigmoid(p_logit_f)
                         brugg_info['f_air'] = f_opt.item()
                         brugg_info['f_optimized'] = True
                     else:
-                        brugg_info['f_air'] = d_lay.get('f_air', 0.5)
+                        if d_lay.get('f_optimizable', False):
+                            brugg_info['f_air'] = d_lay['fixed_param_values'][0]
+                        else:
+                            brugg_info['f_air'] = d_lay.get('f_air', 0.5)
                         brugg_info['f_optimized'] = False
                     layer_params = brugg_info
 
@@ -1051,11 +1140,12 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                     
     print(f"\n¡Optimización elipsométrica completada!")
     print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
-    print(f"Error mínimo (MSE): {loss_final[best_idx].item():.6f}")
+    metric_name = "Chi2 Red" if (std_Is is not None and std_Ic is not None) else "MSE"
+    print(f"Error mínimo ({metric_name}): {best_losses_per_start[best_idx].item():.6f}")
     if is_parametric:
         print("Parámetros de dispersión óptimos:")
         for name, params in best_params.items():
-            if isinstance(name, int):
+            if name == 'chi2_min' or isinstance(name, int):
                 continue
             print(f"  Material: {name} ({params['model']})")
             for k, val in params.items():
@@ -1066,9 +1156,9 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
                         print(f"    {k} = {val}")
                     
     if layer_models is not None:
-        return best_thicknesses, best_Is_curve, best_Ic_curve, best_params, loss_final[best_idx].item()
+        return best_thicknesses, best_Is_curve, best_Ic_curve, best_params
     else:
-        return best_thicknesses, best_Is_curve, best_Ic_curve, loss_final[best_idx].item()
+        return best_thicknesses, best_Is_curve, best_Ic_curve
 
 def load_stack(filename, materials):
     '''Loads stack from Xlsx used by IR-S in Matlab. 'Materials' is a dict 
@@ -1127,4 +1217,210 @@ def plot_js(titulo, e_porosa, e_densa, js,espesores_comparación = None,label_co
     ax.set_ylabel('Espesor inferior [nm]')
     ax.legend()
     plt.show()
+
+def autorange_fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, th_0=0.0, 
+                                     num_starts=50, num_epochs=150, lr=2.0, use_cuda=False, 
+                                     layer_models=None, layer_names=None, std_Is=None, std_Ic=None,
+                                     tolerance=0.01, max_attempts=10, expansion_factor=0.25, contraction_factor=0.1,
+                                     check_cancel_fn=None):
+    """
+    Optimiza el espesor y los parámetros de dispersión de forma recursiva (Autorange).
+    Si detecta saturación en los límites de rango de algún parámetro, amplía el rango en esa dirección
+    y reduce el opuesto, volviendo a ejecutar la optimización hasta que ningún parámetro sature
+    o se alcance el límite de intentos (max_attempts).
+    """
+    import copy
+    
+    # 1. Copiar y estructurar d_bounds y layer_models para poder mutarlos
+    d_bounds_work = [list(b) if isinstance(b, (tuple, list)) else b for b in d_bounds]
+    
+    layer_models_work = []
+    if layer_models is not None:
+        for model in layer_models:
+            if model is None:
+                layer_models_work.append(None)
+            else:
+                if isinstance(model, str):
+                    model_dict = {'model': model}
+                else:
+                    model_dict = copy.deepcopy(model)
+                
+                model_type = model_dict.get('model', 'cauchy')
+                if model_type == 'cauchy':
+                    if 'bounds' not in model_dict or model_dict['bounds'] is None:
+                        model_dict['bounds'] = [(0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0)]
+                    if 'initial' not in model_dict or model_dict['initial'] is None:
+                        model_dict['initial'] = [3.0, 0.0, 0.0]
+                elif model_type == 'cauchy_absorbent':
+                    if 'bounds' not in model_dict or model_dict['bounds'] is None:
+                        model_dict['bounds'] = [(0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0), (0.0, 4.0), (-4.0, 4.0), (-4.0, 4.0)]
+                    if 'initial' not in model_dict or model_dict['initial'] is None:
+                        model_dict['initial'] = [3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                elif model_type == 'bruggeman':
+                    if 'f_bounds' in model_dict and model_dict['f_bounds'] is not None:
+                        pass
+                layer_models_work.append(model_dict)
+    else:
+        layer_models_work = None
+
+    # Función auxiliar de ajuste de rangos
+    def adjust_val_range(val_min, val_max, val_opt, min_abs=None, max_abs=None):
+        width = val_max - val_min
+        if width <= 0:
+            return val_min, val_max, False
+        
+        # Verificar límite superior
+        if (val_max - val_opt) < tolerance * width:
+            val_max_new = val_max + expansion_factor * width
+            val_min_new = val_min + contraction_factor * width
+            if max_abs is not None:
+                val_max_new = min(val_max_new, max_abs)
+            if min_abs is not None:
+                val_min_new = max(val_min_new, min_abs)
+            if val_min_new < val_max_new:
+                return val_min_new, val_max_new, True
+                
+        # Verificar límite inferior
+        elif (val_opt - val_min) < tolerance * width:
+            val_min_new = val_min - expansion_factor * width
+            val_max_new = val_max - contraction_factor * width
+            if min_abs is not None:
+                val_min_new = max(val_min_new, min_abs)
+            if max_abs is not None:
+                val_max_new = min(val_max_new, max_abs)
+            if val_min_new < val_max_new:
+                return val_min_new, val_max_new, True
+                
+        return val_min, val_max, False
+
+    # Iterar la optimización
+    for attempt in range(max_attempts):
+        print(f"\n==================================================")
+        print(f"Autorange: Intento {attempt + 1} de {max_attempts}")
+        print(f"Límites de espesores actuales: {d_bounds_work}")
+        if layer_models_work:
+            print(f"Modelos de dispersión actuales:")
+            for idx, lm in enumerate(layer_models_work):
+                if lm:
+                    name = layer_names[idx] if layer_names else f"layer_{idx}"
+                    print(f"  Capa {idx} ({name}): model={lm.get('model')}, bounds={lm.get('bounds') or lm.get('f_bounds')}")
+        print(f"==================================================")
+        
+        # Ejecutar la optimización
+        if layer_models_work is not None:
+            best_thicknesses, best_Is_curve, best_Ic_curve, best_params = fit_ellipsometry_torch(
+                n_list=n_list, d_bounds=d_bounds_work, lams=lams, Is_exp=Is_exp, Ic_exp=Ic_exp,
+                Data_R=Data_R, th_0=th_0, num_starts=num_starts, num_epochs=num_epochs, lr=lr,
+                use_cuda=use_cuda, layer_models=layer_models_work, layer_names=layer_names,
+                std_Is=std_Is, std_Ic=std_Ic, check_cancel_fn=check_cancel_fn
+            )
+        else:
+            best_thicknesses, best_Is_curve, best_Ic_curve = fit_ellipsometry_torch(
+                n_list=n_list, d_bounds=d_bounds_work, lams=lams, Is_exp=Is_exp, Ic_exp=Ic_exp,
+                Data_R=Data_R, th_0=th_0, num_starts=num_starts, num_epochs=num_epochs, lr=lr,
+                use_cuda=use_cuda, layer_models=None, layer_names=layer_names,
+                std_Is=std_Is, std_Ic=std_Ic, check_cancel_fn=check_cancel_fn
+            )
+            best_params = None
+
+        any_adjusted = False
+        
+        # 2. Verificar saturación de espesores
+        is_optimizable = []
+        for b in d_bounds_work:
+            if isinstance(b, (tuple, list)):
+                d_min, d_max = float(b[0]), float(b[1])
+                is_optimizable.append(d_min != d_max)
+            else:
+                is_optimizable.append(False)
+                
+        o_idx = 0
+        for idx, opt in enumerate(is_optimizable):
+            if opt:
+                val_opt = best_thicknesses[o_idx]
+                d_min, d_max = d_bounds_work[idx]
+                o_idx += 1
+                
+                # Ajustar rango de espesores (límite inferior absoluto es 0.0)
+                new_min, new_max, adjusted = adjust_val_range(d_min, d_max, val_opt, min_abs=0.0)
+                if adjusted:
+                    print(f"[Autorange] Capa {idx + 2} ('{layer_names[idx + 1] if layer_names and (idx + 1) < len(layer_names) else f'layer_{idx}'}'):")
+                    print(f"  El espesor se saturó cerca del límite ({val_opt:.2f} nm en rango [{d_min:.2f}, {d_max:.2f}]).")
+                    print(f"  Nuevo rango propuesto: [{new_min:.2f}, {new_max:.2f}]")
+                    d_bounds_work[idx] = (new_min, new_max)
+                    any_adjusted = True
+
+        # 3. Verificar saturación de parámetros de dispersión
+        if layer_models_work is not None and best_params is not None:
+            for idx, model in enumerate(layer_models_work):
+                if model is None:
+                    continue
+                model_type = model.get('model', 'cauchy')
+                layer_name = layer_names[idx] if layer_names else f"layer_{idx}"
+                layer_params = best_params.get(idx) or best_params.get(layer_name)
+                if layer_params is None:
+                    continue
+                
+                if model_type in ['cauchy', 'cauchy_absorbent']:
+                    bounds = model.get('bounds')
+                    if not bounds:
+                        continue
+                    
+                    # Mapear llaves de parámetros a índices de bounds y límites absolutos
+                    if model_type == 'cauchy':
+                        param_map = [('A', 1.0, None), ('B', None, None), ('C', None, None)]
+                    else:
+                        param_map = [('A', 1.0, None), ('B', None, None), ('C', None, None),
+                                     ('D', 0.0, None), ('E', None, None), ('F', None, None)]
+                    
+                    for k, (key, min_abs, max_abs) in enumerate(param_map):
+                        val_opt = layer_params.get(key)
+                        if val_opt is None:
+                            continue
+                        p_min, p_max = bounds[k]
+                        new_min, new_max, adjusted = adjust_val_range(p_min, p_max, val_opt, min_abs=min_abs, max_abs=max_abs)
+                        if adjusted:
+                            print(f"[Autorange] Capa {idx + 1} ('{layer_name}'), Parámetro {key}:")
+                            print(f"  Se saturó cerca del límite ({val_opt:.4f} en rango [{p_min:.4f}, {p_max:.4f}]).")
+                            print(f"  Nuevo rango propuesto: [{new_min:.4f}, {new_max:.4f}]")
+                            bounds[k] = (new_min, new_max)
+                            any_adjusted = True
+                            
+                elif model_type == 'bruggeman':
+                    # Verificar f_air si es optimizable
+                    if 'f_bounds' in model and model['f_bounds'] is not None:
+                        f_bounds = model.get('f_bounds')
+                        val_opt = layer_params.get('f_air')
+                        if val_opt is not None:
+                            if isinstance(f_bounds[0], (list, tuple)):
+                                f_min, f_max = f_bounds[0]
+                                is_nested = True
+                            else:
+                                f_min, f_max = f_bounds
+                                is_nested = False
+                            
+                            new_min, new_max, adjusted = adjust_val_range(f_min, f_max, val_opt, min_abs=0.0, max_abs=1.0)
+                            if adjusted:
+                                print(f"[Autorange] Capa {idx + 1} ('{layer_name}'), Fracción Bruggeman (f_air):")
+                                print(f"  Se saturó cerca del límite ({val_opt:.4f} en rango [{f_min:.4f}, {f_max:.4f}]).")
+                                print(f"  Nuevo rango propuesto: [{new_min:.4f}, {new_max:.4f}]")
+                                if is_nested:
+                                    model['f_bounds'] = [(new_min, new_max)]
+                                else:
+                                    model['f_bounds'] = (new_min, new_max)
+                                any_adjusted = True
+
+        # Si no hubo ningún ajuste, se encontró la solución óptima sin saturar
+        if not any_adjusted:
+            print(f"\n[Autorange] ¡Convergencia alcanzada exitosamente en el intento {attempt + 1}!")
+            break
+
+    else:
+        print(f"\n[Autorange] Se alcanzó el número máximo de intentos ({max_attempts}) sin total convergencia.")
+
+    if layer_models_work is not None:
+        return best_thicknesses, best_Is_curve, best_Ic_curve, best_params
+    else:
+        return best_thicknesses, best_Is_curve, best_Ic_curve
+
     

@@ -9,7 +9,7 @@ from fit_elipsometrico import (
 from tmm_utils_Rodrigo import cauchy_fn, n_eff
 #%%
 
-data_path = r'./Datos-28-5/TiO2_Si_Sputtering_sincinta.txt'
+data_path = r'./Datos/Datos-28-5/TiO2_Si_Sputtering_sincinta.txt'
 skiprows = 5
 layer_names = ['air', 'T1_porosa', 'T1_densa', 'Si']
 layer_models = [

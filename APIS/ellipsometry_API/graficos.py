@@ -16,8 +16,8 @@ spec.loader.exec_module(tmm)
 from tmm_utils_Rodrigo import cauchy_fn, n_eff, load_interp, brugg_fn, constant_fn
 
 # Ruta del archivo de resultados
-results_path = './Datos-04-6/resultados_stack_7.txt'
-exp_path = './Datos-04-6/1TIO2-2.txt'
+results_path = './Datos/Datos-04-6/resultados_stack_7.txt'
+exp_path = './Datos/Datos-04-6/1TIO2-2.txt'
 #%%
 # 2. Parsear de forma robusta e inmune a problemas de codificación ASCII/UTF-8
 def parse_stack_info(filepath):
@@ -225,36 +225,109 @@ from tmm_utils_Rodrigo import cauchy_fn
 db = SessionLocal()
 
 # Query 
-stack = db.query(models.Stack).filter(models.Stack.id == 22).first()
+stack = db.query(models.Stack).filter(models.Stack.id == 96).first()
 
 best_Is = np.array(stack.best_Is)
 best_Ic = np.array(stack.best_Ic)
 wl_exp = np.array(stack.wl_exp)
 Is_exp = np.array(stack.Is_exp)
 Ic_exp = np.array(stack.Ic_exp)
+#%%
+lams, err_psi, err_delta = np.loadtxt("./Datos/Datos-25-6/meds/SiO2_N4_Si/std/SiO2_N4_Si_std.txt", unpack=True, skiprows=1)
 
-fig,ax = plt.subplots(2,1,figsize=(10,6))
-ax[0].plot(wl_exp,Ic_exp,'k-',label="Ic Experimental")
-ax[0].plot(wl_exp,best_Ic,'r--',label="Ic Calculada")
+# 1. Convertir Is_exp e Ic_exp experimentales a psi_exp y delta_exp en radianes para las derivadas
+psi_exp = 0.5 * np.arcsin(np.clip(np.sqrt(Is_exp**2 + Ic_exp**2), 0.0, 1.0))
+delta_exp = np.arctan2(Is_exp, Ic_exp)
+
+# 2. Interpolar desviaciones del archivo std (grados -> rad) a la grilla de wl_exp
+from scipy.interpolate import interp1d
+_, unique_idx = np.unique(lams, return_index=True)
+unique_idx = np.sort(unique_idx)
+lams_clean = lams[unique_idx]
+err_psi_rad = np.radians(err_psi[unique_idx])
+err_delta_rad = np.radians(err_delta[unique_idx])
+
+err_psi_fn = interp1d(lams_clean, err_psi_rad, bounds_error=False, fill_value="extrapolate")
+err_delta_fn = interp1d(lams_clean, err_delta_rad, bounds_error=False, fill_value="extrapolate")
+
+err_psi_interp = err_psi_fn(wl_exp)
+err_delta_interp = err_delta_fn(wl_exp)
+
+# 3. Propagación analítica de errores
+dIs_dpsi = 2 * np.cos(2 * psi_exp) * np.sin(delta_exp)
+dIc_dpsi = 2 * np.cos(2 * psi_exp) * np.cos(delta_exp)
+dIs_ddelta = Ic_exp
+dIc_ddelta = -Is_exp
+
+Is_err = np.sqrt((dIs_dpsi ** 2) * (err_psi_interp ** 2) + (dIs_ddelta ** 2) * (err_delta_interp ** 2))
+Ic_err = np.sqrt((dIc_dpsi ** 2) * (err_psi_interp ** 2) + (dIc_ddelta ** 2) * (err_delta_interp ** 2))
+
+#Voy a usar la desviación estándar como error en Ic y Is calculadas en la linea 512 y 513
+#%%
+#solo voy a graficar los datos experimentales y calculados, sin los errores
+plt.plot(wl_exp,Ic_exp,'k-',label="Ic Experimental")
+plt.plot(wl_exp,best_Ic,'r--',label="Ic Calculada")
+plt.legend()
+plt.show()
+plt.plot(wl_exp,Is_exp,'k-',label="Is Experimental")
+plt.plot(wl_exp,best_Is,'r--',label="Is Calculada")
+plt.legend()
+plt.show()
+#%%
+# 4. Graficar con fill_between para las bandas de error
+fig, ax = plt.subplots(2, 1, figsize=(10, 8))
+
+# Ic
+ax[0].plot(wl_exp, Ic_exp, 'k-', label="Ic Experimental")
+ax[0].fill_between(wl_exp, Ic_exp - desv_Ic_interp(wl_exp), Ic_exp + desv_Ic_interp(wl_exp), color='red', alpha=0.3, label="Error Ic Exp")
+ax[0].plot(wl_exp, best_Ic, 'r--', label="Ic Calculada")
 ax[0].legend()
-ax[1].plot(wl_exp,Is_exp,'k-',label="Is Experimental")
-ax[1].plot(wl_exp,best_Is,'r--',label="Is Calculada")
+ax[0].grid(True)
+
+# Is
+ax[1].plot(wl_exp, Is_exp, 'k-', label="Is Experimental")
+ax[1].fill_between(wl_exp, Is_exp - desv_Is_interp(wl_exp), Is_exp + desv_Is_interp(wl_exp), color='green', alpha=0.3, label="Error Is Exp")
+ax[1].plot(wl_exp, best_Is, 'r--', label="Is Calculada")
 ax[1].legend()
+ax[1].grid(True)
+
+ax[0].set_xlim([440, 830])
+ax[1].set_xlim([440, 830])
 plt.tight_layout()
 plt.show()
 
 # %%
 #Parametros de la capa de Tio2
-A = stack.layers[1]["params"]["A"]
-B = stack.layers[1]["params"]["B"]
-C = stack.layers[1]["params"]["C"]
-thickness = stack.layers[1]["thickness"]
-n_ti2 = cauchy_fn(A,B,C)(wl_exp)
+capa = 2
+A = stack.layers[capa]["params"]["A"]
+B = stack.layers[capa]["params"]["B"]
+C = stack.layers[capa]["params"]["C"]
+thickness = stack.layers[capa]["thickness"]
+n_SiO2 = cauchy_fn(A,B,C)(wl_exp)
 
 plt.figure(figsize=(10, 6))
-plt.plot(wl_exp,n_ti2.real,'k-',label="n TiO2")
+plt.plot(wl_exp,n_SiO2.real,'k-',label="n alumina")
 plt.xlim([np.min(wl_exp),np.max(wl_exp)])
-plt.ylim([np.min(n_ti2.real) - 0.1,np.max(n_ti2.real) + 0.1])
+plt.ylim([np.min(n_SiO2.real) - 0.1,np.max(n_SiO2.real) + 0.1])
+plt.legend()
+plt.show()
+#%%
+#En esta celda voy a graficar los parametros de cauchy ajustados por el ellipsometro directamente.
+"""
+\par  4) TiO2_trsansparente  A       =   1.6724000 \'fc     0.0078927
+\par  5) TiO2_trsansparente  B       =  42.1256800 \'fc     0.8866562
+\par  6) TiO2_trsansparente  C       = -26.8226100 \'fc     1.2132820
+"""
+A = 1.6724000
+B = 42.1256800
+C = -26.8226100
+
+n_SiO2 = cauchy_fn(A,B,C)(wl_exp)
+
+plt.figure(figsize=(10, 6))
+plt.plot(wl_exp,n_SiO2.real,'k-',label="n TiO2")
+plt.xlim([np.min(wl_exp),np.max(wl_exp)])
+plt.ylim([np.min(n_SiO2.real) - 0.1,np.max(n_SiO2.real) + 0.1])
 plt.legend()
 plt.show()
 # %%
@@ -270,10 +343,10 @@ import matplotlib.pyplot as plt
 from tmm_utils_Rodrigo import cauchy_fn,load_interp
 #%%
 #Muestras de TiO2
-muestra1 = np.loadtxt("datos-09-6/TiO2_Si_SP_S1.txt", skiprows = 5,unpack=True,delimiter="\t")
-muestra1_ajustada = np.loadtxt("datos-09-6/TiO2_Si_SP_S1_fit.txt", skiprows = 5,unpack=True,delimiter="\t")
-muestra2 = np.loadtxt("datos-11-6/TiO2_Si_Sputtering_D2.txt", skiprows = 5,unpack=True,delimiter="\t")
-muestra2_ajustada = np.loadtxt("datos-11-6/TiO2_Si_Sputtering_D2_fit.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra1 = np.loadtxt("Datos/Datos-09-6/TiO2_Si_SP_S1.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra1_ajustada = np.loadtxt("Datos/Datos-09-6/TiO2_Si_SP_S1_fit.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra2 = np.loadtxt("Datos/Datos-11-6/TiO2_Si_Sputtering_D2.txt", skiprows = 5,unpack=True,delimiter="\t")
+muestra2_ajustada = np.loadtxt("Datos/Datos-11-6/TiO2_Si_Sputtering_D2_fit.txt", skiprows = 5,unpack=True,delimiter="\t")
 
 wl1,psi1,delta1 = muestra1
 wl2,psi2,delta2 = muestra2
@@ -344,24 +417,46 @@ plt.legend()
 plt.show()
 #%%
 import sys
+import numpy as np
 import importlib
-from tmm_utils_Rodrigo import constant_fn,calculate_RT
+from tmm_utils_Rodrigo import constant_fn,cauchy_fn,calculate_RT,brugg_fn,load_interp
+import models
+from database import engine, SessionLocal
+import matplotlib.pyplot as plt
+ruta_materiales = r"./indices"
 # 1. Cargar tmm_core de manera segura
 spec = importlib.util.spec_from_file_location("tmm", "./tmm_core.py")
 tmm = importlib.util.module_from_spec(spec)
 sys.modules["tmm"] = tmm
 spec.loader.exec_module(tmm)
 # Ahora voy a graficar las reflectancias y compararlas con la simulación usando el tmm.
-R_TiO2 = np.loadtxt("./Mediciones de reflectancia/11-6/2TiO2N.txt")
-R_lams = np.linspace(190,900,len(R_TiO2))
+#R_TiO2 = np.loadtxt("./Datos/mediciones_de_reflectancia/11-6/2TiO2N.txt")
+#R_lams = np.linspace(190,900,len(R_TiO2))
+
+db = SessionLocal()
+
+# Query 
+stack = db.query(models.Stack).filter(models.Stack.id == 95).first()
+
+
+capa = 1
+A = stack.layers[capa]["params"]["A"]
+B = stack.layers[capa]["params"]["B"]
+C = stack.layers[capa]["params"]["C"]
+thickness = stack.layers[capa]["thickness"]
+
+f_air = stack.layers[capa-1]["params"]["f_air"]
+thickness_poroso = stack.layers[capa-1]["thickness"]
 
 materials = {}
-materials["TiO2_SP"] = (cauchy_fn(2.2738000,2.7818630,7.3597000),constant_fn(0.0))
+materials["TiO2_SP"] = (cauchy_fn(A,B,C),constant_fn(0.0))
+materials["TiO2_SP_poroso"] = (brugg_fn(cauchy_fn(A,B,C),constant_fn(1.0),f_air), load_interp(f'{ruta_materiales}/TiO2Palik.nk', unit='um', skiprows=1)[1])
 materials["Si"] = (load_interp(f'{ruta_materiales}/nkdata/optical/Si.nk', skiprows=1))
 materials["air"] = (constant_fn(1.0),constant_fn(0.0))
 
 stack = [[np.inf,"air", "i"],
-         [40.062, "TiO2_SP", "c"],
+         [thickness_poroso, "TiO2_SP_poroso", "c"],
+         [thickness, "TiO2_SP", "c"],
          [np.inf, "Si", "i"]]
 
 #calculo de reflectancia
@@ -374,6 +469,160 @@ plt.plot(R_lams,ref,'r--',label="R Calculada")
 plt.xlim([430,850])
 plt.ylim([0,0.6])
 plt.legend()
+plt.show()
+#%%
+#========================================================
+#========================================================
+#========================================================
+#========================================================
+#========================================================
+#========================================================
+# Region 4: trabajando con datos directos del elipsometro
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+
+# %%
+dir_datos = './Datos/Datos-08-7/meds'
+material = 'TiO2_recocido'
+muestra = 'TiO2_recocido_SiO2(T4)'
+dir_muestra = f'{dir_datos}/{material}'
+
+# Cargar psi, delta, Ic e Is directamente de los archivos excluyendo el footer de resúmenes
+psi = {}
+delta = {}
+Ic = {}
+Is = {}
+lams_dict = {}
+from io import StringIO
+for i in range(1, 4):
+    lines = []
+    with open(f'{dir_muestra}/{muestra}.M{i}.txt', 'r', encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            if '# MINIMA:' in line:
+                break
+            lines.append(line)
+            
+    lams_dict[i], psi[i], delta[i], Ic[i], Is[i] = np.loadtxt(
+        StringIO("".join(lines)), 
+        skiprows=63, 
+        usecols=(0, 1, 2, 3, 4), 
+        unpack=True
+    )
+    plt.plot(lams_dict[i],Is[i],'o',label=f'Is M{i}')
+    plt.plot(lams_dict[i],Ic[i],'o',label=f'Ic M{i}')
+plt.legend()
+plt.ylim(-1,1)
+plt.xlim(430,850)
+plt.show()
+
+# Definimos una grilla de longitud de onda común (usaremos las lams de M1)
+lams = lams_dict[1]
+
+# Interpolar todas las mediciones a la grilla común lams para resolver tamaños inhomogéneos
+from scipy.interpolate import interp1d
+for i in range(1, 4):
+    psi_fn = interp1d(lams_dict[i], psi[i], bounds_error=False, fill_value="extrapolate")
+    Ic_fn = interp1d(lams_dict[i], Ic[i], bounds_error=False, fill_value="extrapolate")
+    Is_fn = interp1d(lams_dict[i], Is[i], bounds_error=False, fill_value="extrapolate")
+    
+    psi[i] = psi_fn(lams)
+    Ic[i] = Ic_fn(lams)
+    Is[i] = Is_fn(lams)
+    
+    # Interpolar delta de forma circular usando cos/sin para evitar discontinuidades en 0/360
+    delta_rad = np.radians(delta[i])
+    cos_d_fn = interp1d(lams_dict[i], np.cos(delta_rad), bounds_error=False, fill_value="extrapolate")
+    sin_d_fn = interp1d(lams_dict[i], np.sin(delta_rad), bounds_error=False, fill_value="extrapolate")
+    
+    cos_d_interp = cos_d_fn(lams)
+    sin_d_interp = sin_d_fn(lams)
+    delta[i] = np.degrees(np.arctan2(sin_d_interp, cos_d_interp)) % 360
+
+# 1. Medias de Is e Ic (para el promedio vectorial/circular)
+media_Ic = np.mean([Ic[i] for i in range(1, 4)], axis=0)
+media_Is = np.mean([Is[i] for i in range(1, 4)], axis=0)
+desv_Is = np.std([Is[i] for i in range(1, 4)], axis=0, ddof=1)
+desv_Ic = np.std([Ic[i] for i in range(1, 4)], axis=0, ddof=1)
+desv_Ic_interp = interp1d(lams, desv_Ic, bounds_error=False, fill_value="extrapolate")
+desv_Is_interp = interp1d(lams, desv_Is, bounds_error=False, fill_value="extrapolate")
+
+
+fig,ax = plt.subplots(2,1,figsize=(10,8))
+ax[0].errorbar(lams, media_Is, yerr=desv_Is, fmt='o', label='Is_mean')
+ax[1].errorbar(lams, media_Ic, yerr=desv_Ic, fmt='o', label='Ic_mean')
+ax[0].grid()
+ax[1].grid()
+ax[0].legend()
+ax[1].legend()
+ax[0].set_xlim(430,850)
+ax[1].set_xlim(430,850)
+ax[1].set_ylim(-1,1)
+ax[0].set_ylim(-1,1)
+plt.tight_layout()
+plt.show()
+
+# %%
+plt.plot(lams,desv_Is,'ko',label='desv_Is')
+plt.plot(lams,desv_Ic,'ro',label='desv_Ic')
+plt.ylim(-0.05,1)
+plt.xlim(430,850)
+plt.legend()
+plt.show()
+#%%
+# Convertir las medias vectoriales a psi y delta en grados
+# Usamos np.clip para evitar que el ruido supere 1.0 en el arcsin
+arg_arcsin = np.clip(np.sqrt(media_Ic**2 + media_Is**2), 0.0, 1.0)
+media_psi = 0.5 * np.degrees(np.arcsin(arg_arcsin))
+media_delta = np.degrees(np.arctan2(media_Is, media_Ic)) % 360
+# 2. Desviación estándar de psi (directa en grados, estable y sin arcsin)
+desv_psi = np.std([psi[i] for i in range(1, 4)], axis=0, ddof=1)
+# 3. Desviación estándar de delta (con alineación circular para evitar discontinuidades)
+delta_aligned = []
+for i in range(1, 4):
+    diff = delta[i] - media_delta
+    # Corregir la discontinuidad 0/360 mapeando la diferencia a [-180, 180]
+    diff = (diff + 180) % 360 - 180
+    delta_aligned.append(media_delta + diff)
+desv_delta = np.std(delta_aligned, axis=0, ddof=1)
+
+fig,ax = plt.subplots(2,1,figsize=(10,8))
+ax[0].errorbar(lams, media_psi, yerr=desv_psi, fmt='o', label='psi_mean')
+ax[1].errorbar(lams, media_delta, yerr=desv_delta, fmt='o', label='delta_mean')
+ax[0].grid()
+ax[1].grid()
+ax[0].legend()
+ax[1].legend()
+ax[0].set_xlim(430,850)
+ax[1].set_xlim(430,850)
+# ax[0].set_ylim(-1,100)
+
+# ax[1].set_ylim(-1,2)
+plt.tight_layout()
+plt.show()
+#%%
+# Ahora voy a querer guardar estos datos de media y sigma
+np.savetxt(f'{dir_muestra}/mean/{muestra}_media.txt', np.c_[lams, media_psi, media_delta], header='lams, psi_mean, delta_mean', fmt='%.6f')
+np.savetxt(f'{dir_muestra}/std/{muestra}_std.txt', np.c_[lams, desv_psi, desv_delta], header='lams, desv_psi, desv_delta', fmt='%.6f')
+# %%
+#verifico que la conversión es correcta
+media_Ic_reconst = np.sin(np.radians(media_psi)*2)*np.cos(np.radians(media_delta))
+media_Is_reconst = np.sin(np.radians(media_psi)*2)*np.sin(np.radians(media_delta))
+
+fig,ax = plt.subplots(2,1,figsize=(10,8))
+ax[0].plot(lams,media_Is_reconst,'ro',label='Is_reconst')
+ax[0].plot(lams,media_Is,'ko',label='Is_mean')
+ax[1].plot(lams,media_Ic_reconst,'ro',label='Ic_reconst')
+ax[1].plot(lams,media_Ic,'ko',label='Ic_mean')
+ax[0].grid()
+ax[1].grid()
+ax[0].legend()
+ax[1].legend()
+ax[0].set_xlim(430,850)
+ax[1].set_xlim(430,850)
+ax[1].set_ylim(-1,1)
+ax[0].set_ylim(-1,1)
+plt.tight_layout()
 plt.show()
 # %%
 #=====================================================================

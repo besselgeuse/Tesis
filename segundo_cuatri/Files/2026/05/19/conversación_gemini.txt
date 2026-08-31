@@ -1,0 +1,1119 @@
+En el archivo funciones_torch esta la función coh_tmm_torch, quiero que me expliques como funciona ya que estoy aprendiendo a usar torch. Es bastante larga y compleja asi que necesito que vayas de manera lenta y ordenada dandome ejemplos de ser necesario para facilitar la comprensión de la logica de programación y de las funciones de pytorch
+
+Hola. Entiendo perfectamente la complejidad. Cuando trasladas el Método de la Matriz de Transferencia (TMM) a un entorno diferenciable como PyTorch, la lógica matemática de la física de películas delgadas se fusiona con el manejo de tensores multidimensionales y grafos de computación para la optimización de parámetros (como los espesores d).
+
+Vamos a desglosar conceptualmente el funcionamiento de coh_tmm_torch  paso a paso, analizando la lógica física y cómo se traduce a las funciones nativas de PyTorch.  
+MD
+
+1. El Propósito de la Función: TMM Coherente y Diferenciable
+En la física fotovoltaica, cuando analizamos capas antirreflectantes (ARC) cuyo espesor es del orden de la longitud de onda de la luz incidente (λ), los efectos de interferencia constructiva y destructiva son dominantes.
+
+La función coh_tmm_torch resuelve analíticamente las ecuaciones de Maxwell en estructuras multicapa considerando la fase de la onda. Al estar programada en PyTorch:  
+MD
+
+Mantiene el grafo de autograd: Permite calcular gradientes automáticos respecto a variables físicas (por ejemplo,  
+∂d 
+ARC
+​
+ 
+∂R
+​
+ ) para optimizar el diseño óptico mediante descenso de gradiente.
+
+Procesamiento en Batch (Lotes): Puede evaluar múltiples longitudes de onda (λ) y configuraciones vectorizadas en paralelo de forma eficiente.
+
+2. Los Bloques Fundamentales (Ecuaciones de Fresnel)
+Para entender cómo opera el bucle principal de la matriz de transferencia, primero debemos ver cómo calcula PyTorch las condiciones de frontera ópticas en cada interfaz. El script se apoya en funciones elementales que vectorizan las Ecuaciones de Fresnel:
+
+Ley de Snell Compleja (list_snell_torch)
+La propagación de la luz en medios con absorción requiere que los índices de refracción (n=n 
+′
+ +ik) y los ángulos de refracción (θ) sean tratados como números complejos.
+
+Python
+return torch.asin(n_list[0] * torch.sin(th_0) / n_list)
+Lógica de PyTorch: torch.sin y torch.asin operan elemento a elemento (element-wise) sobre tensores complejos. Al dividir el tensor del medio incidente entre el tensor n_list (que contiene los índices de todas las capas para todas las longitudes de onda), calcula simultáneamente todos los ángulos de refracción del sistema.
+
+Coeficientes de Reflexión y Transmisión de Amplitud
+Las funciones interface_r_torch e interface_t_torch implementan las ecuaciones de Fresnel para polarizaciones Transversal Eléctrica (s) y Transversal Magnética (p):  
+MD
+
+Python
+# Caso polarización 's' para reflexión
+return ((n_i * torch.cos(th_i) - n_f * torch.cos(th_f)) / 
+        (n_i * torch.cos(th_i) + n_f * torch.cos(th_f)))
+Lógica de PyTorch: Multiplicaciones y restas matriciales implícitas. Si n_i (medio inicial) y n_f (medio final) tienen dimensiones [num_capas, num_wavelengths], PyTorch realiza la operación matemática de manera simultánea en toda la rejilla de datos sin usar bucles for explícitos de Python, acelerando drásticamente el cálculo.
+
+3. Lógica Interna de la Matriz de Transferencia Coherente
+Aunque en tu fragmento de código la lógica interna de coh_tmm_torch se reduce a las llamadas de las interfaces de Reflectancia y Transmitancia, el estándar del algoritmo TMM coherente vectorizado en PyTorch sigue una secuencia lineal estructurada de la siguiente manera:  
+MD
+
+Paso A: Inicialización de la Matriz del Sistema
+El método TMM modela el sistema multicapa multiplicando matrices de 2×2 (matrices de interfaz y matrices de propagación). Para ello, se utiliza la función auxiliar make_2x2_array_torch:  
+MD
+
+Python
+return torch.stack([
+    torch.stack([a, b], dim=-1),
+    torch.stack([c, d], dim=-1)
+], dim=-2)
+Explicación de torch.stack: A diferencia de torch.cat (que concatena tensores a lo largo de un eje existente), torch.stack crea una nueva dimensión. Al apilar secuencialmente los coeficientes escalares transformados en tensores, PyTorch genera un volumen de matrices tridimensional de forma [num_wl, 2, 2], permitiendo operar de forma masiva sobre todas las longitudes de onda a la vez.  
+MD
+
+Paso B: El Bucle de Propagación de Fase
+Para una capa intermedia j con espesor d 
+j
+​
+  e índice n 
+j
+​
+ , la onda electromagnética acumula un desfase (fase de película delgada) definido por:
+
+δ 
+j
+​
+ = 
+λ 
+vac
+​
+ 
+2π
+​
+ n 
+j
+​
+ d 
+j
+​
+ cos(θ 
+j
+​
+ )
+En PyTorch, la matriz de propagación de dicha capa se calcula utilizando la exponencial compleja (torch.exp sobre un tensor con dtype=torch.complex64 o complex128).
+
+Paso C: Multiplicación de Matrices Batch (torch.matmul)
+Para acoplar todas las capas desde el medio incidente (aire) hasta el sustrato (silicio), se multiplican consecutivamente las matrices de interfaz y propagación. En lugar de iterar ineficientemente, PyTorch aprovecha el producto de matrices por lotes (batch matrix multiplication):
+
+Si tienes una matriz global del sistema M, se ejecuta de forma iterativa o acumulada un producto matricial donde las dimensiones del lote (las longitudes de onda) se respetan en el fondo, operando únicamente sobre las últimas dos dimensiones (2x2).
+
+4. El Cálculo de Potencias: Conservación del Grafo (Autograd)
+Una vez obtenida la matriz de transferencia total del sistema M, los coeficientes globales de reflexión de amplitud (r) y transmisión (t) se extraen de los componentes de la matriz. Para convertirlos en las variables reales de interés fotovoltaico—Reflectancia (R) y Transmitancia (T)—se aplican las funciones de potencia del archivo:  
+MD
+
+Python
+def R_from_r_torch(r):
+    return (r * r.conj()).real
+
+Detalle técnico crucial de PyTorch: Para calcular el cuadrado del módulo de un número complejo (∣r∣ 
+2
+ ), se multiplica el tensor por su conjugado (r.conj()) y se extrae su parte real mediante .real. ¿Por qué se hace así? Si usaras funciones estándar de Python o transformaciones drásticas de tipo de dato, romperías el flujo del gradiente. El método (r * r.conj()).real es completamente rastreable por el motor de diferenciación automática (Autograd) de PyTorch.  
+MD
+
+Para la transmitancia (T), se aplica la corrección del flujo de energía basada en los índices de refracción reales del medio inicial y final, y los ángulos correspondientes:  
+MD
+
+Python
+# Para polarización s
+return (t * t.conj()).real * ((n_f * torch.cos(th_f)).real / (n_i * torch.cos(th_i)).real)
+Resumen del Flujo de Datos para tu Tesis
+Si tuvieses que diagramar o documentar el algoritmo de coh_tmm_torch para el capítulo metodológico de tu investigación, el orden de ejecución es el siguiente:  
+MD
+
+[ Tensores de entrada: n_list, d_list, th_0, lam_vac ]
+                         │
+                         ▼
+           Calcular ángulos complejos (Snell)
+                         │
+                         ▼
+        Construir matrices 2x2 para cada interfaz
+                         │
+                         ▼
+ Multiplicación en cadena (Batch Matmul) -> Matriz Total (M)
+                         │
+                         ▼
+      Extraer coeficientes de amplitud (r, t)
+                         │
+                         ▼
+  Calcular R y T conservando Autograd (r * r.conj()).real
+¿Hay alguna parte específica del álgebra matricial o del manejo de las dimensiones de los tensores complejas en PyTorch que te esté costando implementar en tu código de optimización?
+
+no entendí por que el mate_2x2_array_torch tiene dimension [num_wl,2,2] en el output si solo esta haciendo un stack de dos tuplas de 1x2.
+
+Es completamente normal que esto confunda al principio. La clave para entender por qué el resultado es [num_wl, 2, 2] y no simplemente una matriz 2x2 radica en que las entradas a, b, c y d no son números individuales (escalares), sino vectores (tensores) de tamaño [num_wl]. Cada uno de ellos contiene los coeficientes ópticos calculados para todas las longitudes de onda en paralelo.  
+MD
+
+Vamos a desglosarlo paso a paso para ver cómo cambian las dimensiones con cada torch.stack.
+
+Paso 1: Entender las Entradas
+Imagina que estamos analizando solo 3 longitudes de onda (num_wl = 3). Las entradas a, b, c, d son tensores unidimensionales:
+
+a = [a1, a2, a3] (Forma: [3])
+
+b = [b1, b2, b3] (Forma: [3])
+
+c = [c1, c2, c3] (Forma: [3])
+
+d = [d1, d2, d3] (Forma: [3])
+
+Paso 2: El Stack Interno (dim=-1)
+El código primero ejecuta los bloques internos:  
+MD
+
+Python
+fila1 = torch.stack([a, b], dim=-1)
+fila2 = torch.stack([c, d], dim=-1)
+La función torch.stack crea una nueva dimensión en la posición indicada por dim.
+Como dim=-1 significa "la última dimensión", y nuestros tensores originales solo tenían una dimensión ([3]), PyTorch añade la nueva dimensión al final, convirtiendo la forma de [3] a [3, 2].
+
+Físicamente, PyTorch junta los elementos índice por índice:
+
+fila1 se convierte en: [[a1, b1], [a2, b2], [a3, b3]] (Forma: [3, 2])
+
+fila2 se convierte en: [[c1, d1], [c2, d2], [c3, d3]] (Forma: [3, 2])
+
+Ahora tienes dos filas, pero cada una de ellas contiene la información empaquetada para las 3 longitudes de onda.
+
+Paso 3: El Stack Externo (dim=-2)
+Finalmente, el código junta esas dos filas:  
+MD
+
+Python
+return torch.stack([fila1, fila2], dim=-2)
+Aquí estamos aplicando torch.stack a dos tensores que ya tienen forma [3, 2].
+El parámetro dim=-2 nos dice que agreguemos la nueva dimensión en la penúltima posición (es decir, justo entre el 3 y el 2).
+
+Al insertar una dimensión de tamaño 2 (porque son 2 tensores: fila1 y fila2) en esa posición, la forma final pasa de [3, 2] a:
+
+Forma final=[3,2,2]
+Generalizando para cualquier número de longitudes de onda, la dimensión resultante es [num_wl, 2, 2]. Esto significa que tienes un "bloque" o lote (batch) que contiene num_wl matrices individuales de 2x2, permitiendo que las multiplicaciones de la matriz de transferencia se realicen de forma masiva y simultánea para todo el espectro solar sin usar bucles for.  
+MD
+
+Para ayudarte a visualizar cómo fluyen las dimensiones y cómo interactúan los ejes en PyTorch al construir estas matrices de transferencia, puedes utilizar el siguiente simulador interactivo de tensores.
+
+
+
+ahora explicame unicamente el coh_tmm_torch linea a linea.
+
+Basado en el fragmento de código que me compartiste del archivo funciones_torch.txt, voy a explicarte la función coh_tmm_torch línea por línea.
+
+Es importante notar que el fragmento de código proporcionado muestra la declaración de la función y dos funciones internas (anidadas), pero no incluye el bucle principal de multiplicación de matrices. Sin embargo, analicemos detalladamente lo que sí está presente.
+
+Aquí tienes el código reestructurado para que sea más fácil de leer, seguido de su explicación:
+
+Python
+def coh_tmm_torch(pol, n_list, d_list, th_0, lam_vac):
+    """ 
+    Versión diferenciable y BATCHED en PyTorch del Método de la Matriz de Transferencia. 
+    Permite optimizar d_list mediante Autograd. 
+    """
+
+    def interface_R_torch(pol, n_i, n_f, th_i, th_f):
+        """Reflectance at an interface (PyTorch)."""
+        r = interface_r_torch(pol, n_i, n_f, th_i, th_f)
+        return R_from_r_torch(r)
+
+    def interface_T_torch(pol, n_i, n_f, th_i, th_f):
+        """Transmittance at an interface (PyTorch)."""
+        t = interface_t_torch(pol, n_i, n_f, th_i, th_f)
+        return T_from_t_torch(pol, t, n_i, n_f, th_i, th_f)
+1. La definición principal
+Python
+def coh_tmm_torch(pol, n_list, d_list, th_0, lam_vac):
+def coh_tmm_torch(...): Define la función principal que calculará la Matriz de Transferencia Coherente (TMM).
+
+pol: Es un string ('s' o 'p') que indica el estado de polarización de la luz incidente.
+
+n_list: Es un tensor de PyTorch que contiene los índices de refracción complejos (n+ik) de todas las capas de la celda solar (ej. Aire, ARC como SiO 
+2
+​
+  o Si 
+3
+​
+ N 
+4
+​
+ , y sustrato de Silicio).
+
+d_list: Es un tensor con los espesores físicos de cada capa. Al ser un tensor, es la variable clave que PyTorch puede ajustar durante un proceso de optimización para encontrar el espesor antirreflectante ideal.
+
+th_0: Es el ángulo de incidencia inicial de la luz proveniente del exterior.
+
+lam_vac: Es un tensor con las longitudes de onda de la luz en el vacío (el espectro solar que estás simulando, por ejemplo, de 300 nm a 1100 nm).
+
+2. El Docstring (Documentación)
+Python
+    """ 
+    Versión diferenciable y BATCHED en PyTorch del Método de la Matriz de Transferencia. 
+    Permite optimizar d_list mediante Autograd. 
+    """
+Explica el propósito de la función. "Diferenciable" significa que las operaciones matemáticas conservan el historial (Autograd) para calcular gradientes (derivadas) automáticamente. "BATCHED" significa que calcula múltiples longitudes de onda o ángulos simultáneamente gracias a la computación tensorial.
+
+3. Función Interna de Reflectancia
+Python
+    def interface_R_torch(pol, n_i, n_f, th_i, th_f):
+Define una función anidada (una función dentro de otra función). Solo se utiliza internamente en coh_tmm_torch para simplificar cálculos. Recibe el índice de refracción y el ángulo inicial (n_i, th_i) y los correspondientes al medio que atraviesa (n_f, th_f).
+
+Python
+        r = interface_r_torch(pol, n_i, n_f, th_i, th_f)
+Llama a la función interface_r_torch (que calcula las ecuaciones de Fresnel). Esta línea calcula el coeficiente de amplitud de reflexión (r, en minúscula). Este valor es un número complejo que contiene información sobre la magnitud y la fase de la onda reflejada.
+
+Python
+        return R_from_r_torch(r)
+Toma la amplitud compleja (r) y la envía a R_from_r_torch, la cual ejecuta (r * r.conj()).real para obtener la Reflectancia de potencia (R, en mayúscula). Este es un número real que te dice qué porcentaje exacto de energía fotónica se está perdiendo por reflejo en esa interfaz específica.
+
+4. Función Interna de Transmitancia
+Python
+    def interface_T_torch(pol, n_i, n_f, th_i, th_f):
+Es idéntica en lógica a la anterior, pero orientada a medir la luz que logra "cruzar" a la siguiente capa.
+
+Python
+        t = interface_t_torch(pol, n_i, n_f, th_i, th_f)
+Calcula el coeficiente de amplitud de transmisión (t, minúscula) usando la ley de Fresnel.
+
+Python
+        return T_from_t_torch(pol, t, n_i, n_f, th_i, th_f)
+Convierte la amplitud compleja (t) en Transmitancia de potencia (T, mayúscula). Esta conversión es más compleja que la reflectancia porque la energía que fluye depende de la impedancia de los medios, por lo que T_from_t_torch internamente multiplicará ∣t∣ 
+2
+  por la proporción de los cosenos y las partes reales de los índices de refracción, conservando la energía (Flujo de Poynting).
+
+Nota sobre tu código: En el texto que cargaste, el código de coh_tmm_torch se interrumpe justo después de esto y pasa inmediatamente a la función inc_tmm_torch (versión incoherente). Falta toda la sección matricial donde se ensamblan y multiplican las matrices 2×2. ¿Deseas que analicemos también el bucle de propagación si lo tienes en otra parte del archivo, o tienes dudas sobre estas líneas en particular?
+
+esta es la funcion que quiero que me expliques al completo: "def coh_tmm_torch(pol, n_list, d_list, th_0, lam_vac):
+
+    """
+
+    Versión diferenciable y BATCHED en PyTorch del Método de la Matriz de Transferencia.
+
+    Permite optimizar d_list mediante Autograd.
+
+    
+
+    Soporta batch: si d_list tiene forma [batch, num_layers, num_wl],
+
+    las salidas R, T tendrán forma [batch, num_wl].
+
+    Si d_list tiene forma [num_layers, num_wl], las salidas son [num_wl].
+
+    """
+
+    # 1. Asegurar que los inputs sean tensores de PyTorch
+
+    if not isinstance(lam_vac, torch.Tensor):
+
+        lam_vac = torch.tensor(lam_vac, dtype=torch.float64, device=n_list.device)
+
+    if not isinstance(th_0, torch.Tensor):
+
+        th_0 = torch.tensor(th_0, dtype=n_list.real.dtype if n_list.is_complex() else n_list.dtype,
+
+                            device=n_list.device)
+
+    
+
+    # Detectar dimensión batch
+
+    squeeze_output = False
+
+    if d_list.dim() == 2:  # [num_layers, num_wl] -> sin batch
+
+        d_list = d_list.unsqueeze(0)  # [1, num_layers, num_wl]
+
+        squeeze_output = True
+
+    
+
+    batch_size = d_list.shape[0]
+
+    num_layers = n_list.shape[0]
+
+    num_wl = n_list.shape[1]
+
+
+
+    # 2. Ángulos y kz (NO dependen de d_list, se calculan una sola vez)
+
+    th_list = list_snell_torch(n_list, th_0)  # [num_layers, num_wl]
+
+    kz_list = 2 * torch.pi * n_list * torch.cos(th_list) / lam_vac  # [num_layers, num_wl]
+
+    
+
+    # 3. Delta (fase): [batch, num_layers, num_wl] via broadcasting
+
+    delta = kz_list.unsqueeze(0) * d_list
+
+    
+
+    # Manejo de capas opacas (solo capas finitas 1..num_layers-2)
+
+    inner = delta[:, 1:-1, :]
+
+    cond = inner.imag > 100
+
+    inner = torch.where(cond, inner.real + 100j, inner)
+
+    delta = torch.cat([delta[:, :1, :], inner, delta[:, -1:, :]], dim=1)
+
+
+
+    # 4. Coeficientes de Fresnel (NO dependen de d_list): [num_wl] cada uno
+
+    t_list_vals = []
+
+    r_list_vals = []
+
+    for i in range(num_layers - 1):
+
+        t_list_vals.append(interface_t_torch(pol, n_list[i], n_list[i+1], th_list[i], th_list[i+1]))
+
+        r_list_vals.append(interface_r_torch(pol, n_list[i], n_list[i+1], th_list[i], th_list[i+1]))
+
+
+
+    # 5. Multiplicación matricial BATCHED
+
+    # Inicializar Mtilde como identidad: [batch, num_wl, 2, 2]
+
+    ones_bw = torch.ones(batch_size, num_wl, dtype=delta.dtype, device=delta.device)
+
+    zeros_bw = torch.zeros_like(ones_bw)
+
+    Mtilde = make_2x2_array_torch(ones_bw, zeros_bw, zeros_bw, ones_bw)
+
+    
+
+    for i in range(1, num_layers - 1):
+
+        delta_i = delta[:, i, :]  # [batch, num_wl]
+
+        r_i = r_list_vals[i].unsqueeze(0).expand(batch_size, -1)  # [batch, num_wl]
+
+        t_i = t_list_vals[i].unsqueeze(0).expand(batch_size, -1)  # [batch, num_wl]
+
+        
+
+        A = make_2x2_array_torch(
+
+            torch.exp(-1j * delta_i), torch.zeros_like(delta_i),
+
+            torch.zeros_like(delta_i), torch.exp(1j * delta_i)
+
+        )  # [batch, num_wl, 2, 2]
+
+        
+
+        B = make_2x2_array_torch(
+
+            torch.ones_like(r_i), r_i, r_i, torch.ones_like(r_i)
+
+        )  # [batch, num_wl, 2, 2]
+
+        
+
+        d_coeff = (1 / t_i).unsqueeze(-1).unsqueeze(-1)  # [batch, num_wl, 1, 1]
+
+        M_i = d_coeff * torch.matmul(A, B)
+
+        Mtilde = torch.matmul(Mtilde, M_i)
+
+
+
+    # Interfaz frontal (0 -> 1)
+
+    r_0 = r_list_vals[0].unsqueeze(0).expand(batch_size, -1)
+
+    t_0 = t_list_vals[0].unsqueeze(0).expand(batch_size, -1)
+
+    A_front = make_2x2_array_torch(
+
+        torch.ones_like(r_0), r_0, r_0, torch.ones_like(r_0)
+
+    )
+
+    d_front = (1 / t_0).unsqueeze(-1).unsqueeze(-1)
+
+    M_front = d_front * A_front
+
+    Mtilde = torch.matmul(M_front, Mtilde)
+
+
+
+    # 6. Coeficientes r, t: [batch, num_wl]
+
+    r = Mtilde[:, :, 1, 0] / Mtilde[:, :, 0, 0]
+
+    t = 1.0 / Mtilde[:, :, 0, 0]
+
+
+
+    # 7. Potencias
+
+    R = R_from_r_torch(r)
+
+    T = T_from_t_torch(pol, t, n_list[0], n_list[-1], th_0, th_list[-1])
+
+
+
+    # Si no había batch, quitar la dimensión extra
+
+    if squeeze_output:
+
+        r, t, R, T = r.squeeze(0), t.squeeze(0), R.squeeze(0), T.squeeze(0)
+
+
+
+    return {'r': r, 't': t, 'R': R, 'T': T}"
+
+Analizar esta función es un paso crítico para tu tesis. Lo que tienes aquí es el "motor" del simulador. Esta función toma las ecuaciones analíticas del electromagnetismo (fundamentadas en Hecht o Pochi Yeh) y las transforma en un grafo de computación masivo.
+
+La genialidad de este código radica en su capacidad "Batched" (procesamiento por lotes). En lugar de simular un espesor de TiO 
+2
+​
+  a la vez, permite introducir un tensor bidimensional con miles de combinaciones de espesores. PyTorch calcula la reflectancia de todos simultáneamente en la GPU/CPU, y gracias a Autograd, sabe exactamente cómo modificar cada espesor para minimizar la reflexión y maximizar J 
+sc
+​
+ .
+
+Vamos a desglosarla bloque por bloque, uniendo la lógica de programación con los fundamentos físicos:
+
+Bloque 1: Inicialización y Preparación del "Batch"
+Python
+    # 1. Asegurar que los inputs sean tensores de PyTorch
+    if not isinstance(lam_vac, torch.Tensor): ...
+    if not isinstance(th_0, torch.Tensor): ...
+    
+    # Detectar dimensión batch
+    squeeze_output = False
+    if d_list.dim() == 2:  # [num_layers, num_wl] -> sin batch
+        d_list = d_list.unsqueeze(0)  # [1, num_layers, num_wl]
+        squeeze_output = True
+    
+    batch_size = d_list.shape[0]
+    # ...
+Física: Necesitamos saber si estamos simulando un solo panel (un set de espesores) o miles de paneles a la vez.
+
+Lógica PyTorch: El código verifica las dimensiones de d_list usando .dim(). Si es 2, significa que solo pasaste índices por capa y longitudes de onda, pero no un "lote" de pruebas.
+
+La función clave (unsqueeze): unsqueeze(0) crea una dimensión "ficticia" al principio. Convierte una matriz plana en un bloque tridimensional. Esto es vital porque el resto de las operaciones matriciales asumen que siempre hay un "volumen" de datos. Al final de la función, si squeeze_output es verdadero, esta dimensión extra se elimina.
+
+Bloque 2: Propagación y Ley de Snell
+Python
+    # 2. Ángulos y kz (NO dependen de d_list, se calculan una sola vez)
+    th_list = list_snell_torch(n_list, th_0)  # [num_layers, num_wl]
+    kz_list = 2 * torch.pi * n_list * torch.cos(th_list) / lam_vac  # [num_layers, num_wl]
+Física: Para que haya interferencia en las capas delgadas (tu ARC), necesitamos saber cómo viaja la onda espacialmente. Se calcula el vector de onda en la dirección perpendicular a las capas (k 
+z
+​
+ ).
+
+Lógica PyTorch: PyTorch vectoriza la fórmula matemática. Aquí no hay bucles for; la operación aritmética se aplica elemento a elemento a toda la malla de longitudes de onda y capas de manera instantánea, manejando los índices de refracción complejos (n+ik) automáticamente.
+
+Bloque 3: Acumulación de Fase (δ) y Estabilidad Numérica
+Python
+    # 3. Delta (fase): [batch, num_layers, num_wl] via broadcasting
+    delta = kz_list.unsqueeze(0) * d_list
+    
+    # Manejo de capas opacas (solo capas finitas 1..num_layers-2)
+    inner = delta[:, 1:-1, :]
+    cond = inner.imag > 100
+    inner = torch.where(cond, inner.real + 100j, inner)
+    delta = torch.cat([delta[:, :1, :], inner, delta[:, -1:, :]], dim=1)
+Física: δ es el cambio de fase óptica al atravesar un espesor d. Si un material absorbe muchísimo (como el silicio en el UV), el término imaginario de δ se vuelve enorme. En las ecuaciones matriciales, esto implica evaluar e 
+i(x+iy)
+ , que se convierte en una exponencial real e 
+−y
+  muy pequeña o muy grande.
+
+Lógica PyTorch: * Broadcasting: Al multiplicar kz_list.unsqueeze(0) (forma [1, capas, wl]) por d_list (forma [batch, capas, wl]), PyTorch duplica automáticamente el k 
+z
+​
+  para que coincida con el tamaño del batch.
+
+torch.where (Censura de divergencias): Si el valor imaginario de la fase supera 100 (lo que causaría que los tensores den NaN o Inf arruinando el gradiente), se recorta artificialmente a 100j. Esto no afecta la física, ya que para la luz, un material con atenuación de e 
+−100
+  ya es un sumidero absoluto de fotones.
+
+Bloque 4 y 5: Construcción de la Matriz del Sistema
+Python
+    # Inicializar Mtilde como identidad: [batch, num_wl, 2, 2]
+    ones_bw = torch.ones(batch_size, num_wl, dtype=delta.dtype, device=delta.device)
+    zeros_bw = torch.zeros_like(ones_bw)
+    Mtilde = make_2x2_array_torch(ones_bw, zeros_bw, zeros_bw, ones_bw)
+Física: El TMM asume que empezamos en el sustrato inferior y retrocedemos hasta el aire, multiplicando capas. Inicializamos con la matriz Identidad ( 
+1
+0
+​
+  
+0
+1
+​
+ ).
+
+Lógica PyTorch: Se crean tensores llenos de unos y ceros y se agrupan en matrices 2×2 adaptadas a todas las longitudes de onda.
+
+Python
+    for i in range(1, num_layers - 1):
+        # ...
+        A = make_2x2_array_torch(
+            torch.exp(-1j * delta_i), torch.zeros_like(delta_i),
+            torch.zeros_like(delta_i), torch.exp(1j * delta_i)
+        )
+        
+        B = make_2x2_array_torch(
+            torch.ones_like(r_i), r_i, r_i, torch.ones_like(r_i)
+        )
+        
+        d_coeff = (1 / t_i).unsqueeze(-1).unsqueeze(-1)
+        M_i = d_coeff * torch.matmul(A, B)
+        Mtilde = torch.matmul(Mtilde, M_i)
+Física: * La Matriz A es la Matriz de Propagación. Adelanta la fase de la luz en la película antirreflectante (e 
+±iδ
+ ).
+
+La Matriz B es la Matriz de Interfaz dinámica. Incorpora los coeficientes de Fresnel (r, t) al cruzar de un material a otro (ej. TiO 
+2
+​
+ →Si).
+
+Lógica PyTorch (torch.matmul): Este es el corazón de la velocidad del código. Multiplica las matrices A y B preservando las dimensiones de batch y longitud de onda ([batch, num_wl, 2, 2]). Las funciones unsqueeze(-1).unsqueeze(-1) toman un simple número (como el coeficiente 1/t) y lo transforman en la forma [batch, num_wl, 1, 1] para que pueda multiplicar a la matriz 2x2 por "broadcasting" sin romper las reglas del álgebra matricial de tensores.
+
+Bloque 6 y 7: Extracción de Propiedades Macroscópicas
+Python
+    # 6. Coeficientes r, t: [batch, num_wl]
+    r = Mtilde[:, :, 1, 0] / Mtilde[:, :, 0, 0]
+    t = 1.0 / Mtilde[:, :, 0, 0]
+
+    # 7. Potencias
+    R = R_from_r_torch(r)
+    T = T_from_t_torch(pol, t, n_list[0], n_list[-1], th_0, th_list[-1])
+Física: Tras multiplicar la contribución de todo el panel, la matriz global de transferencia Mtilde relaciona los campos eléctricos incidentes, reflejados y transmitidos totales. Físicamente sabemos que la reflectividad global de amplitud es el elemento M 
+21
+​
+ /M 
+11
+​
+ .
+
+Lógica PyTorch: El código extrae exactamente esas posiciones de la matriz final usando segmentación de tensores ([:, :, 1, 0]), calcula los cuadrados de los módulos mediante las funciones que vimos antes (R_from_r_torch), y devuelve el diccionario.
+
+En el contexto de tu tesis: Entender este código demuestra que no usaste la herramienta como una "caja negra". Esta vectorización no solo procesa arrays; sostiene un "Grafo Diferenciable". Cuando este código arroja R, PyTorch conoce exactamente el camino matemático inverso para retroceder desde esa reflectancia final hasta el parámetro d_list[1] (el espesor de tu TiO 
+2
+​
+ ), permitiéndote derivarlo matemáticamente ( 
+∂d 
+TiO2
+​
+ 
+∂R
+​
+ ).
+
+Que es el batch?
+
+En el contexto de la simulación computacional con PyTorch y tu investigación en óptica fotovoltaica, el término "batch" (lote) se refiere al procesamiento paralelo y masivo de múltiples configuraciones independientes en una sola operación matemática, en lugar de calcularlas una por una de forma secuencial.
+
+Para entenderlo aplicado a tu tesis sobre capas antirreflectantes (ARC) de silicio:
+
+1. El enfoque tradicional (Sin batch):
+Imagina que quieres encontrar el espesor óptimo para una doble capa de TiO 
+2
+​
+  y SiO 
+2
+​
+ .
+Le pasas a tu simulador una configuración, por ejemplo: d 
+1
+​
+ =50 nm y d 
+2
+​
+ =100 nm. El algoritmo calcula la reflectancia (R) para todo el espectro solar (λ). Si necesitas evaluar 10,000 combinaciones de espesores distintos para encontrar el óptimo global, tendrías que usar un bucle for que ejecute el cálculo de la Matriz de Transferencia 10,000 veces seguidas. Esto crea un "cuello de botella" computacional severo.
+
+2. El enfoque Batched (Por lotes):
+En PyTorch, aprovechas la vectorización multidimensional. Creas un tensor gigante donde la primera dimensión es el tamaño del batch (batch_size = 10000).
+Ese único tensor contiene las 10,000 combinaciones de espesores. Cuando pasas este tensor a tu función coh_tmm_torch, el hardware (CPU o GPU) aplica las ecuaciones de Fresnel y la propagación de fase a los 10,000 "paneles virtuales" exactamente al mismo tiempo mediante operaciones algebraicas simultáneas [Fuente: PyTorch para optimización de capas ópticas].
+
+Traducción de las dimensiones en tu código:
+Cuando el script menciona que los tensores tienen la forma [batch, num_wl, 2, 2]:
+
+2, 2 es la matriz de transferencia fundamental de las ecuaciones ópticas.
+
+num_wl es la cantidad de longitudes de onda simuladas (ej. 300 nm a 1100 nm).
+
+batch representa cuántos sistemas físicos independientes (celdas solares con distintos parámetros) estás resolviendo de un solo golpe.
+
+Impacto en tu Tesis:
+Manejar simulaciones en batch no es solo una mejora de código, es un salto cualitativo en la metodología. Te permite hacer barridos paramétricos completos (Grid Search) o entrenar modelos de Inteligencia Artificial en microsegundos, algo físicamente imposible de lograr en tiempos prácticos con algoritmos tradicionales no vectorizados.
+
+Tengo esta otra funcion que usa la coh_tmm_torch para minimizar el valor de la reflectancia pesada mediante la funcion loss: "def calculate_RT_torch(n_list, d_bounds, lams, c_list=None, weights=None, pol='s', th_0=0.0, num_starts=50, num_epochs=150, lr=2.0, use_cuda=False):
+
+"""
+
+Optimiza el espesor de un stack de capas delgadas usando PyTorch Autograd.
+
+
+Parámetros:
+
+- n_list: Tensor complejo de PyTorch (torch.complex128) con los índices [num_capas, num_lams].
+
+- d_bounds: Lista que define los límites o valores fijos para cada capa finita.
+
+Puede contener:
+
+- Tupla/Lista (min, max): para optimizar esa capa dentro de dichos límites.
+
+- Float/Int o Tupla (val, val): para mantener esa capa con un espesor constante fijo.
+
+- lams: Tensor con las longitudes de onda.
+
+- c_list: Lista opcional indicando 'c' (coherente) o 'i' (incoherente) para cada capa.
+
+Si se provee, utiliza la versión inc_tmm_torch para cálculos gruesos.
+
+- weights: Tensor opcional con los pesos (por ejemplo, espectro solar * IQE * wavelength)
+
+para realizar una optimización por reflectancia ponderada (Jsc).
+
+- pol: Polarización, 's' o 'p'.
+
+- th_0: Ángulo de incidencia (radianes).
+
+- num_starts: Cantidad de semillas aleatorias para evitar mínimos locales.
+
+- num_epochs: Número de iteraciones del Descenso de Gradiente.
+
+- lr: Learning rate (tasa de aprendizaje) para el optimizador Adam.
+
+- use_cuda: Si es True, utiliza la GPU para acelerar los cálculos (si está disponible).
+
+"""
+
+device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
+
+print(f"Ejecutando en dispositivo: {device}")
+
+
+
+# Mover tensores al dispositivo
+
+n_list = n_list.to(device)
+
+lams = lams.to(device)
+
+
+
+if weights is not None:
+
+if not isinstance(weights, torch.Tensor):
+
+weights = torch.tensor(weights, dtype=torch.float64, device=device)
+
+else:
+
+weights = weights.to(device)
+
+# Normalizar pesos para asegurar promedio ponderado correcto
+
+weights = weights / weights.sum()
+
+
+
+num_layers = n_list.shape[0]
+
+num_finite_layers = num_layers - 2
+
+num_wl = n_list.shape[1]
+
+
+
+if len(d_bounds) != num_finite_layers:
+
+raise ValueError(f"d_bounds debe tener longitud igual al número de capas finitas ({num_finite_layers}), pero tiene {len(d_bounds)}.")
+
+
+
+# 1. ANALIZAR CAPAS OPTIMIZABLES Y FIJAS
+
+is_optimizable = []
+
+opt_bounds = [] # Límites (min, max) para optimizables
+
+fixed_values = {} # Mapa de idx -> valor_fijo para no optimizables
+
+
+
+for idx, b in enumerate(d_bounds):
+
+if isinstance(b, (tuple, list)):
+
+d_min, d_max = float(b[0]), float(b[1])
+
+if d_min == d_max:
+
+is_optimizable.append(False)
+
+fixed_values[idx] = d_min
+
+else:
+
+is_optimizable.append(True)
+
+opt_bounds.append((d_min, d_max))
+
+else:
+
+is_optimizable.append(False)
+
+fixed_values[idx] = float(b)
+
+
+
+num_opt_layers = sum(is_optimizable)
+
+print(f"Capas a optimizar: {num_opt_layers} | Capas fijas: {num_finite_layers - num_opt_layers}")
+
+
+
+if num_opt_layers == 0:
+
+raise ValueError("No se definieron capas optimizables en d_bounds (todas son fijas).")
+
+
+
+# 2. INICIALIZACIÓN MULTI-START EN EL ESPACIO NO ACOTODO (LOGIT)
+
+# Inicializamos d_initial en el espacio físico dentro de [d_min, d_max],
+
+# y luego lo mapeamos a d_opt no acotado para usar el truco del Sigmoide.
+
+d_initial = torch.zeros((num_starts, num_opt_layers), dtype=torch.float64, device=device)
+
+opt_idx = 0
+
+for idx, opt in enumerate(is_optimizable):
+
+if opt:
+
+d_min, d_max = opt_bounds[opt_idx]
+
+d_init_phys = torch.empty(num_starts, device=device).uniform_(d_min, d_max)
+
+# Mapeo inverso de sigmoide (logit)
+
+p = (d_init_phys - d_min) / (d_max - d_min)
+
+p = torch.clamp(p, 1e-7, 1.0 - 1e-7) # Evitar desbordes numéricos
+
+d_initial[:, opt_idx] = torch.log(p / (1.0 - p))
+
+opt_idx += 1
+
+
+
+d_opt = d_initial.clone().detach().requires_grad_(True)
+
+
+
+# 3. OPTIMIZADOR
+
+optimizer = optim.Adam([d_opt], lr=lr)
+
+
+
+print(f"Iniciando optimización con Autograd ({num_starts} semillas en paralelo)...")
+
+
+
+# Columna de infinitos para sustrato/superestrato: [num_starts, 1]
+
+inf_col = torch.full((num_starts, 1), float('inf'), dtype=torch.float64, device=device)
+
+
+
+# Helper para construir d_fisico a partir de d_opt y las capas fijas
+
+def reconstruct_d_fisico(d_opt_tensor):
+
+d_fisico_cols = []
+
+o_idx = 0
+
+for idx, opt in enumerate(is_optimizable):
+
+if opt:
+
+d_min, d_max = opt_bounds[o_idx]
+
+# Mapeo sigmoide: garantiza d_min <= espesor <= d_max estrictamente
+
+col = d_min + (d_max - d_min) * torch.sigmoid(d_opt_tensor[:, o_idx])
+
+d_fisico_cols.append(col)
+
+o_idx += 1
+
+else:
+
+val = fixed_values[idx]
+
+col = torch.full((d_opt_tensor.shape[0],), val, dtype=torch.float64, device=device)
+
+d_fisico_cols.append(col)
+
+return torch.stack(d_fisico_cols, dim=1)
+
+
+
+# 4. BUCLE DE OPTIMIZACIÓN (sin loop sobre semillas)
+
+for epoch in range(num_epochs):
+
+optimizer.zero_grad()
+
+
+
+d_fisico = reconstruct_d_fisico(d_opt) # [num_starts, num_finite_layers]
+
+
+
+# Construir d_list BATCHED: [num_starts, num_layers]
+
+d_full = torch.cat([inf_col, d_fisico, inf_col], dim=1)
+
+# Expandir a [num_starts, num_layers, num_wl]
+
+d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
+
+
+
+# UNA SOLA llamada para TODAS las semillas
+
+if c_list is None:
+
+result = tmm.coh_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d,
+
+th_0=th_0, lam_vac=lams)
+
+else:
+
+result = tmm.inc_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d, c_list=c_list,
+
+th_0=th_0, lam_vac=lams)
+
+
+
+R = result['R'] # [num_starts, num_wl]
+
+
+
+# Loss (promedio simple o ponderado por weights)
+
+if weights is None:
+
+loss_per_start = R.mean(dim=-1)
+
+else:
+
+loss_per_start = (R * weights).sum(dim=-1)
+
+
+
+loss = loss_per_start.sum()
+
+
+
+loss.backward()
+
+optimizer.step()
+
+
+
+if epoch % 50 == 0:
+
+mejor_R_actual = loss_per_start.min().item()
+
+if weights is None:
+
+print(f"Epoch {epoch}/{num_epochs} | Mejor Reflectancia Media: {mejor_R_actual*100:.2f}%")
+
+else:
+
+print(f"Epoch {epoch}/{num_epochs} | Mejor Reflectancia Media Ponderada: {mejor_R_actual*100:.2f}%")
+
+
+
+# 5. EXTRACCIÓN DEL MÍNIMO GLOBAL
+
+with torch.no_grad():
+
+d_final_fisico = reconstruct_d_fisico(d_opt)
+
+d_full = torch.cat([inf_col, d_final_fisico, inf_col], dim=1)
+
+d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
+
+if c_list is None:
+
+result = tmm.coh_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d,
+
+th_0=th_0, lam_vac=lams)
+
+else:
+
+result = tmm.inc_tmm_torch(pol=pol, n_list=n_list, d_list=d_full_3d, c_list=c_list,
+
+th_0=th_0, lam_vac=lams)
+
+R_final = result['R']
+
+
+
+if weights is None:
+
+loss_final = R_final.mean(dim=-1)
+
+else:
+
+loss_final = (R_final * weights).sum(dim=-1)
+
+
+
+best_idx = loss_final.argmin()
+
+
+
+best_thicknesses = d_final_fisico[best_idx].cpu().detach().numpy()
+
+best_R_curve = R_final[best_idx].cpu().detach().numpy()
+
+
+
+print(f"\n¡Optimización completada!")
+
+print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
+
+if weights is None:
+
+print(f"Reflectancia media óptima: {loss_final[best_idx].item()*100:.2f}%")
+
+else:
+
+print(f"Reflectancia media ponderada óptima: {loss_final[best_idx].item()*100:.2f}%")
+
+
+
+return best_thicknesses, best_R_curve
+
+" en este caso la logica es que quiero encontrar la combinacion de espesores que mejor Js genera. Ahora lo que quiero es replicar lo que hace el programa deltapsi2 que ajusta los parametros elipsometricos a una curva medida para minimizar el chi cuadrado y encontrar los valores "reales" de los mismos. Tu que haz visto el manual de instrucciones y mi otra conversación contigo sobre este tema, se puede adaptar estas funciones para que en lugar de optimizar la Js encuentren los parametros psi y delta?
+
+Como experto en física de semiconductores y óptica, te confirmo que sí es completamente posible y de hecho es una de las aplicaciones más potentes de tu código.
+
+Lo que hace el software comercial DeltaPsi2 es utilizar el algoritmo de Levenberg-Marquardt para minimizar el error χ 
+2
+  entre las curvas medidas y un modelo teórico. Al adaptar tu función a PyTorch, reemplazarás ese método tradicional por el Descenso de Gradiente (mediante el optimizador Adam y Autograd), lo cual te permite ajustar los espesores (o índices) de manera masiva y paralelizada.
+
+Para transformar tu función calculate_RT_torch de un optimizador de corriente (J 
+sc
+​
+ ) a un "Fitter" Elipsométrico, debes modificar fundamentalmente dos cosas: lo que extraes de la matriz de transferencia y la función de costo (Loss).
+
+Aquí tienes la fundamentación teórica y cómo adaptar la lógica del código:
+
+1. Extracción de Parámetros Elipsométricos
+Tu función actual extrae la reflectancia de potencia (R). Para la elipsometría, necesitas los coeficientes de reflexión complejos de amplitud para ambas polarizaciones (r 
+s
+​
+  y r 
+p
+​
+ ).
+La relación fundamental de la elipsometría dicta que la reflectividad compleja ρ es el cociente entre ambos:
+
+ρ= 
+r 
+s
+​
+ 
+r 
+p
+​
+ 
+​
+ 
+A partir de ρ, puedes despejar los valores teóricos:
+
+Ψ 
+teo
+​
+ =arctan(∣ρ∣)
+
+Δ 
+teo
+​
+ =Arg(ρ)
+
+2. La nueva Función de Costo (Loss)
+En lugar de minimizar la suma de la reflectancia, tu objetivo ahora es minimizar el χ 
+2
+  (o el Error Cuadrático Medio, MSE) entre los datos experimentales y los datos teóricos generados por tu TMM en cada epoch.
+
+Adaptación del Código (Lógica Interna)
+Para lograr esto, debes modificar los parámetros de entrada para recibir psi_exp y delta_exp (tus datos medidos en el elipsómetro) y reescribir el bucle de optimización. Así es como se vería el corazón de tu función adaptada:
+
+Python
+# ... [Inicialización igual a tu código original] ...
+
+# 4. BUCLE DE OPTIMIZACIÓN ELIPSOMÉTRICA
+for epoch in range(num_epochs):
+    optimizer.zero_grad()
+
+    d_fisico = reconstruct_d_fisico(d_opt) 
+    d_full = torch.cat([inf_col, d_fisico, inf_col], dim=1)
+    d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
+
+    # A. Ejecutar TMM para polarización 's' y 'p'
+    res_s = tmm.coh_tmm_torch(pol='s', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+    res_p = tmm.coh_tmm_torch(pol='p', n_list=n_list, d_list=d_full_3d, th_0=th_0, lam_vac=lams)
+
+    # B. Extraer amplitudes complejas (r minúscula)
+    r_s = res_s['r'] # [num_starts, num_wl]
+    r_p = res_p['r'] # [num_starts, num_wl]
+
+    # C. Calcular parámetros elipsométricos teóricos
+    rho = r_p / r_s
+    psi_teo = torch.atan(torch.abs(rho))
+    
+    # torch.angle calcula el argumento del número complejo
+    delta_teo = torch.angle(rho) 
+    
+    # Manejo de discontinuidades de fase (opcional, asegurar rango 0 a 360 si es necesario)
+    # delta_teo = torch.where(delta_teo < 0, delta_teo + 2*torch.pi, delta_teo)
+
+    # D. Calcular el Error (Chi-cuadrado o MSE)
+    # Suponiendo que psi_exp y delta_exp son tensores pasados a la función
+    error_psi = (psi_teo - psi_exp) ** 2
+    error_delta = (delta_teo - delta_exp) ** 2
+    
+    # Loss por cada semilla
+    loss_per_start = (error_psi + error_delta).mean(dim=-1)
+
+    loss = loss_per_start.sum()
+    loss.backward()
+    optimizer.step()
+    
+    # ... [Resto del código para extraer el mínimo] ...
+Consideración Práctica para tu Tesis
+El software de Horiba suele ajustar los parámetros I 
+s
+​
+  e I 
+c
+​
+  en lugar de Ψ y Δ directamente para evitar problemas de estabilidad numérica cerca de los saltos de fase. Si notas que el optimizador de PyTorch tiene dificultades para converger, puedes modificar fácilmente la sección "C" del código para calcular I 
+s_teo
+​
+ =sin(2Ψ)sin(Δ) e I 
+c_teo
+​
+ =sin(2Ψ)cos(Δ) y minimizar el error respecto a esos parámetros medidos.
