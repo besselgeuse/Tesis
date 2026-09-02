@@ -4,11 +4,14 @@ Este archivo registra el estado actual del desarrollo del proyecto de simulació
 
 ## 1. Cambios Recientes (Última Sesión)
 
-- **Script Científico Autónomo de Autorange (`Ajuste_AL2O3.py`):**
-  - Se implementó un script puramente científico en [Ajuste_AL2O3.py](file:///d:/archivos/TESIS/TMM-R/segundo_cuatri/capas_AR_triple_o_mas/Ajuste_AL2O3.py) para ajustar mediciones elipsométricas de películas/nanotubos de $\text{Al}_2\text{O}_3$ mediante `autorange_fit_ellipsometry_torch`.
-  - Elimina la necesidad de dependencias de API/FastAPI o base de datos MySQL.
-  - Incorpora lectura automática de archivos `.spe` o `.txt`, extracción del ángulo de incidencia $\theta_0$, catálogo completo de materiales (`air`, `GaAs`, `InGaP`, `T1_densa`, `T1_porosa`, `Rutilo`, `MgF2`, `vidrio`, `Al2O3`, `SiO2`, `Si`, `anatasa`) y constantes físicas ($e, h, c, \text{const}$).
-  - Grafica la comparación $I_s, I_c$, $\Psi, \Delta$ y la curva de dispersión $n(\lambda)$ optimizada, y exporta opcionalmente los resultados detallados a un archivo de texto `.txt`.
+- **Restricción de Índice de Refracción Máximo ($n_{max\_limits}$):**
+  - Se implementó el parámetro opcional `n_max_limits` en `fit_ellipsometry_torch` y `autorange_fit_ellipsometry_torch` en [tmm_utils_Rodrigo.py](file:///d:/archivos/TESIS/TMM-R/segundo_cuatri/tmm_utils_Rodrigo.py) para acotar físicamente el valor de $n(\lambda)$ devuelto por modelos de dispersión (como Cauchy).
+  - La verificación de validez se realiza al finalizar la optimización multi-start (post-épocas), filtrando las semillas que superen el valor máximo permitido en cualquier longitud de onda del rango y seleccionando la semilla válida con menor error ($\text{MSE}/\chi^2$).
+- **Corrección de Contracción en Autorange (`adjust_val_range`):**
+  - Se corrigió la función auxiliar `adjust_val_range` en `autorange_fit_ellipsometry_torch` para impedir contracciones indeseadas de la cota superior ($d_{max}$) cuando una variable o espesor colinda con su cota mínima absoluta (`0.0` nm).
+- **Simulación TMM Directa y Validación de Ambigüedad de Fase (`Ajuste_AL2O3.py`):**
+  - En [Ajuste_AL2O3.py](file:///d:/archivos/TESIS/TMM-R/segundo_cuatri/capas_AR_triple_o_mas/Ajuste_AL2O3.py) se agregaron celdas dedicadas para calcular y comparar la respuesta TMM de muestras gruesas (~970 nm) utilizando tanto la versión PyTorch (`coh_tmm_torch_batched`) como la versión NumPy (`tmm.coh_tmm`), comprobando equivalencia perfecta a nivel de precisión de máquina ($\sim 10^{-15}$).
+  - Se analizó y resolvió la ambigüedad periódica de interferencia óptica ($m\lambda/2n\cos\theta$) que provocaba convergencia a la rama de 60-70 nm cuando los rangos de espesor no se ajustaban al régimen físico de ~900 nm.
 
 - **Espesores de Capa Fijos e Independientes:** Se implementó soporte completo tanto en el frontend como en el backend para permitir fijar de forma independiente el espesor de cualquier capa intermedia finita.
   - **Interfaz de Espesores Mixtos:** En [index.html](file:///d:/archivos/TESIS/TMM-R/APIS/ellipsometry_API/static/index.html#L1286) se rediseñó la sección de espesores (`.layer-row-thickness`) agregando inputs de rango (`thick-min` y `thick-max`), un input de espesor fijo (`thick-fixed`) y un checkbox de alternancia `"Opt"`.
