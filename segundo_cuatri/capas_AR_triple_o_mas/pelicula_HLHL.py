@@ -19,7 +19,7 @@ sys.path.append(f'{Dirección_tmm_Rodrigo}')
 
 from tmm_utils_Rodrigo import (load_interp, RT_with_cache, load_fn, plot_js,
                                cauchy_fn, constant_fn, brugg_fn, stack2tmm,
-                               calculate_RT_torch)
+                               calculate_RT_torch, autorange_calculate_RT_torch)
 # %%
 # Primero el Ti (para el que usaron valores experimentales)
 modelo_T1 = cauchy_fn(2.338,1.906,0.824)   #muestra T1 del paper (R-1)
@@ -72,7 +72,7 @@ weight = const*IQE*lams
 weight_am0 = weight * am0
 weight_am15 = weight * am15
 #%%
-thickness, R_curve = calculate_RT_torch(stack_HLHL, materials, lams, weights=weight_am0, pol='s', th_0=0.0, num_starts=2000, num_epochs=100, lr=1.0, use_cuda=True)
+thickness, R_curve = autorange_calculate_RT_torch(stack_HLHL, materials, lams, weights=weight_am0, pol='s', th_0=0.0, num_starts=2000, num_epochs=100, lr=1.0, use_cuda=True)
 # %%
 print(thickness)
 import matplotlib.pyplot as plt

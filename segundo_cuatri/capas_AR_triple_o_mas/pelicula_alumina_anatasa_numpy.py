@@ -34,8 +34,8 @@ materials = {
     'vidrio' : (load_interp(f'{ruta_materiales}/glass_thales.nk',skiprows=1)),
     'Al2O3': (load_interp(f'{ruta_materiales}/nkdata/optical/Al2O3.nkv',skiprows=1)),
     'SiO2': (load_interp(f'{ruta_materiales}/nkdata/optical/SiO2.nkv',skiprows=1)),
-    'Si': (load_interp(f'{ruta_materiales}/nkdata/Silicio_Palik.nk',skiprows=1)),
-    'anatasa': (load_interp(f'{ruta_materiales}/nkdata/anatase.nkv',skiprows=1)),
+    'Si': (load_interp(f'{ruta_materiales}/nkdata/Silicio_Palik.nk',unit='um',skiprows=1)),
+    'anatasa': (load_interp(f'{ruta_materiales}/nkdata/anatase.nkv',unit='um',skiprows=1)),
 }
 
 # Asigno k rutilo a las capas experimentales

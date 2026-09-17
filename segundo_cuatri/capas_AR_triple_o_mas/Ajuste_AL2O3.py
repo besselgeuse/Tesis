@@ -9,6 +9,8 @@ a su vez se encuentra en la carpeta Files.
 #%% IMPORTS Y RUTAS
 import sys
 import os
+import re
+import ast
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -20,57 +22,8 @@ if Dirección_tmm_Rodrigo not in sys.path:
 from tmm_utils_Rodrigo import (
     load_interp, autorange_fit_ellipsometry_torch, load_fn, plot_js,
     cauchy_fn, constant_fn, brugg_fn, stack2tmm, calculate_RT_torch, transform_I_to_psi_delta,
-    load_interp_in3
+    load_interp_in3, leer_datos_guardados, interpolar_todo, guardar_resultados_txt
 )
-
-#%% FUNCIONES AUXILIARES DE CARGA DE DATOS Y TRANSFORMACIÓN
-def interpolar_todo(wl_exp=None,psi_exp=None,delta_exp=None,Ic_exp=None,Is_exp=None):
-    from scipy.interpolate import interp1d
-    def interpolar_datos(lams, datos=None):
-        if datos is not None:
-            return interp1d(lams,datos,kind='linear',fill_value='extrapolate')
-        else:
-            return None
-    mask_wl = np.where((wl_exp >= 440) & (wl_exp <= 830))
-    wl_exp = wl_exp[mask_wl]
-    psi_exp = psi_exp[mask_wl]
-    delta_exp = delta_exp[mask_wl]
-    Ic_exp = Ic_exp[mask_wl]
-    Is_exp = Is_exp[mask_wl]
-
-    psi_exp_interp = interpolar_datos(wl_exp,psi_exp)
-    delta_exp_interp = interpolar_datos(wl_exp,delta_exp)
-    Ic_exp_interp = interpolar_datos(wl_exp,Ic_exp)
-    Is_exp_interp = interpolar_datos(wl_exp,Is_exp)
-
-    return wl_exp, psi_exp_interp(wl_exp), delta_exp_interp(wl_exp), Ic_exp_interp(wl_exp), Is_exp_interp(wl_exp)    
-
-
-def guardar_resultados_txt(salida_path, data_file, wl_exp, Is_exp, Is_fit, Ic_exp, Ic_fit, 
-                           psi_exp, psi_fit, delta_exp, delta_fit, 
-                           best_thicknesses, best_params):
-    """Guarda los resultados del ajuste en un archivo TXT."""
-    with open(salida_path, 'w', encoding='utf-8') as f:
-        f.write("# ========================================================\n")
-        f.write("# RESULTADOS DE AJUSTE ELIPSOMÉTRICO (AUTORANGE + TMM)\n")
-        f.write("# ========================================================\n")
-        f.write(f"# Archivo de origen: {os.path.basename(data_file)}\n")
-        f.write(f"# Espesores óptimos (nm): {list(best_thicknesses)}\n")
-        if best_params:
-            f.write(f"# Error mínimo (Chi2 Red / MSE): {best_params.get('chi2_min', 0.0):.6e}\n")
-            f.write("# Parámetros de dispersión optimizados:\n")
-            for name, params in best_params.items():
-                if name != 'chi2_min' and not isinstance(name, int):
-                    f.write(f"#   Capa '{name}': {params}\n")
-        f.write("# ========================================================\n")
-        f.write("# Wavelength_nm\tIs_exp\tIs_fit\tIc_exp\tIc_fit\tPsi_exp_deg\tPsi_fit_deg\tDelta_exp_deg\tDelta_fit_deg\n")
-        
-        for i in range(len(wl_exp)):
-            f.write(f"{wl_exp[i]:.4f}\t{Is_exp[i]:.6f}\t{Is_fit[i]:.6f}\t"
-                    f"{Ic_exp[i]:.6f}\t{Ic_fit[i]:.6f}\t{psi_exp[i]:.4f}\t"
-                    f"{psi_fit[i]:.4f}\t{delta_exp[i]:.4f}\t{delta_fit[i]:.4f}\n")
-    print(f"--> Resultados guardados exitosamente en: {salida_path}")
-
 #%% DICCIONARIO DE MATERIALES
 
 modelo_T1 = cauchy_fn(2.338, 1.906, 0.824)   # muestra T1 del paper (R-1)
@@ -98,7 +51,7 @@ materials['T1_densa'] = (materials['T1_densa'][0], materials['Rutilo'][1])
 materials['T1_porosa'] = (materials['T1_porosa'][0], materials['Rutilo'][1])
 
 #%% CARGA DE DATOS Y CONFIGURACIÓN DEL STACK
-DATA_dir = r'../Files/2026.08.25/Al2O3_nanotubes.8-med1.txt'
+DATA_dir = r'../Files/2026.08.25/Al2O3_nanotubes.7-med1.txt'
 
 wl_exp,psi_exp,delta_exp,Ic_exp_raw,Is_exp_raw = np.loadtxt(DATA_dir,skiprows=61,usecols=(0,1,2,3,4),max_rows=1334-61,unpack=True)
 
@@ -113,14 +66,14 @@ wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp = interpolar_todo(wl_exp,psi_exp,delta_ex
 layer_names = ['air', 'Al2O3_nanotube', 'Al2O3', 'Si']
 layer_models = [
     None,
-    {'model': 'bruggeman', 'f_bounds': (0.1, 0.7)},
-    {'model': 'cauchy', 'bounds': [(1, 5), (-10, 10), (-10, 10)]},
+    {'model': 'bruggeman', 'f_bounds': (0, 0.9)},
+    {'model': 'cauchy', 'bounds': [(1, 5), (-25, 25), (-25, 25)]},
     None
 ]
 
 # Rangos de espesores iniciales para las capas finitas (nm)
 # Ajustados al régimen físico de ~900 nm totales (~450 nm nanotubos + ~450 nm Al2O3)
-d_bounds = [(0.0, 100.0), (900.0, 1000.0)]
+d_bounds = [(0.0, 400.0), (0.0, 400.0)]
 
 # n_max_limits: límites máximos para n en cada capa (excepto aire/substraído)
 n_max_limits = [None, None, 2.0, None]
@@ -149,13 +102,13 @@ best_thicknesses, best_Is_curve, best_Ic_curve, best_params = autorange_fit_elli
     Ic_exp=Ic_exp_torch,
     th_0=th_0_rad,
     num_starts=400,
-    num_epochs=150,
+    num_epochs=200,
     lr=1.5,
     use_cuda=True,
     layer_models=layer_models,
     layer_names=layer_names,
     n_max_limits=n_max_limits,
-    max_attempts=1
+    max_attempts=15
 )
 
 # Reconstruir Psi y Delta calculadas
@@ -167,10 +120,20 @@ if best_params:
     print(f"Parámetros de dispersión del Al2O3: {best_params['Al2O3']}")
 print("=" * 60)
 
-#%% GRAFICADO CIENTÍFICO DE RESULTADOS
+#%%
+#celda para cargar datos optimizados ya guardados
+path = "../Files/2026.08.25/Al2O3_nanotubes.7-med1_fit_results.txt"
+data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,psi_exp, psi_fit, delta_exp, delta_fit,best_thicknesses, best_params = leer_datos_guardados(path)
+
+#%% GRAFICADO DE RESULTADOS
 material = 'Al2O3'
 A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
 indice_Alumina = cauchy_fn(A,B,C)(wl_exp)
+f_air = best_params['Al2O3_nanotube']['f_air']
+d_Al2O3 = best_thicknesses[1]
+d_Al2O3_nanotube = best_thicknesses[0]
+
+indice_Alumina_nanotube = brugg_fn(cauchy_fn(A,B,C), constant_fn(1.0), f_air)(wl_exp)
 
 fig, axes = plt.subplots(2, 1, figsize=(12, 10))
 ax1 = axes[0]
@@ -182,12 +145,12 @@ ax2.plot(wl_exp, Ic_exp, 'r.', label='$I_c$ exp', alpha=0.6)
 ax2.plot(wl_exp,best_Ic_curve,'r-',label='$I_c$ fit', linewidth=1.8)
 ax1.set_xlabel('Longitud de onda [nm]')
 ax1.set_ylabel('Componentes $I_s$')
-ax1.set_ylim(0.6,1.2)
+ax1.set_ylim(np.min(best_Is_curve)-0.1,np.max(best_Is_curve)+0.1)
 ax1.grid(True)
 ax1.legend()
 ax2.set_xlabel('Longitud de onda [nm]')
 ax2.set_ylabel('Componentes $I_c$')
-ax2.set_ylim(-0.04,0.2)
+ax2.set_ylim(np.min(best_Ic_curve)-0.1,np.max(best_Ic_curve)+0.1)
 ax2.grid(True)
 ax2.legend()
 plt.tight_layout()
@@ -198,7 +161,7 @@ ax = axes
 ax.plot(wl_exp,indice_Alumina)
 ax.set_xlabel('Longitud de onda [nm]')
 ax.set_ylabel('Índice de refracción')
-ax.set_title(f'Índice de refracción de {material}')
+ax.set_title(f'Índice de refracción de los nanotubos de {material}')
 ax.grid(True)
 plt.show()
 
@@ -219,12 +182,12 @@ guardar_resultados_txt(
 from tmm_utils_Rodrigo import coh_tmm_torch_batched
 
 # Parámetros del ajuste del elipsómetro / teóricos
-A_elip, B_elip, C_elip = 1.614, 0.0048, 0.00012  # Modelo Cauchy para Al2O3
-f_air_elip = 0.54                               # Fracción de aire en la capa porosa (nanotubo)
+A_elip, B_elip, C_elip = 1.578, -9.1729, 17.8583  # Modelo Cauchy para Al2O3
+f_air_elip = 0.985                               # Fracción de aire en la capa porosa (nanotubo)
 
 # Espesores de prueba (nm) que suman ~970 nm (ej. 500 nm nanotubo + 470 nm Al2O3 denso)
-d_nanotube_test = 500.0
-d_al2o3_test = 470.0
+d_nanotube_test = 5.0
+d_al2o3_test = 970.0
 d_total_test = d_nanotube_test + d_al2o3_test
 print(f"Calculando respuesta óptica para espesores gruesos: d_nanotube = {d_nanotube_test} nm, d_Al2O3 = {d_al2o3_test} nm (Total = {d_total_test} nm)")
 
@@ -300,23 +263,45 @@ plt.show()
 # %% CÁLCULO MANUAL USANDO tmm.coh_tmm (VERSIÓN NUMPY) Y COMPARACIÓN CON TORCH
 import tmm_core as tmm
 
+path = "../Files/2026.08.25/Al2O3_nanotubes.8-med1_fit_results.txt"
+data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,psi_exp, psi_fit, delta_exp, delta_fit,best_thicknesses, best_params = leer_datos_guardados(path)
+lams_exp = np.loadtxt('../Files/mediciones_reflectancia_1-09-2026/lams.txt')
+R_exp = np.loadtxt('../Files/mediciones_reflectancia_1-09-2026/3P8.txt')
+material = 'Al2O3'
+A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
+indice_Alumina = cauchy_fn(A,B,C)(wl_exp)
+f_air = best_params['Al2O3_nanotube']['f_air']
+d_Al2O3 = best_thicknesses[1]
+d_Al2O3_nanotube = best_thicknesses[0]
 # Construcción del vector de índices NumPy por capa y por longitud de onda
 n_air_np = np.ones_like(wl_exp, dtype=complex)
-n_al2o3_np = cauchy_fn(A_elip, B_elip, C_elip)(wl_exp) + 0j
-n_nanotube_np = brugg_fn(cauchy_fn(A_elip, B_elip, C_elip), constant_fn(1.0), f_air_elip)(wl_exp) + 0j
-n_si_np = n_list_torch[3].cpu().numpy()  # Silicio
+n_al2o3_np = cauchy_fn(A,B,C)(wl_exp) + 0j
+n_nanotube_np = brugg_fn(cauchy_fn(A,B,C), constant_fn(1.0), f_air)(wl_exp) + 0j
+n_si_np = materials['Si'][0](wl_exp) + materials['Si'][1](wl_exp)*1j
 
 # n_list de forma [num_capas, num_wl] y d_list de capas
 n_list_np_stack = np.array([n_air_np, n_nanotube_np, n_al2o3_np, n_si_np])
-d_list_np_stack = [np.inf, d_nanotube_test, d_al2o3_test, np.inf]
+d_list_np_stack = [np.inf, d_Al2O3_nanotube, d_Al2O3, np.inf]
+
+#stack unicamente compuesto de silicio
+n_si_stack = np.array([n_air_np, n_si_np])
+d_si_stack = [np.inf, np.inf]
+
+th_0_rad = np.radians(0)
 
 # Cálculo TMM coherente (NumPy) para polarización s y p
 res_s_np = tmm.coh_tmm('s', n_list_np_stack, d_list_np_stack, th_0_rad, wl_exp)
 res_p_np = tmm.coh_tmm('p', n_list_np_stack, d_list_np_stack, th_0_rad, wl_exp)
 
+#caclulo la reflectancia del silicio para comparar
+res_s_si_np = tmm.coh_tmm('s', n_si_stack, d_si_stack, th_0_rad, wl_exp)
+res_p_si_np = tmm.coh_tmm('p', n_si_stack, d_si_stack, th_0_rad, wl_exp)
+
 # Reflectancias R_s y R_p (NumPy)
 R_s_np = res_s_np['R']
 R_p_np = res_p_np['R']
+R_s_si_np = res_s_si_np['R']
+R_p_si_np = res_p_si_np['R']
 
 # Coeficiente elipsométrico rho = r_p / r_s
 rho_np = np.conj(res_p_np['r'] / res_s_np['r'])
@@ -331,51 +316,15 @@ Ic_calc_coh_np = np.sin(2 * psi_np_rad) * np.cos(delta_np_rad)
 psi_np_deg = np.degrees(psi_np_rad)
 delta_np_deg = np.mod(np.degrees(delta_np_rad), 360)
 
-# --- COMPARACIÓN DE PRECISIÓN ENTRE NUMPY (coh_tmm) Y PYTORCH (coh_tmm_torch_batched) ---
-diff_max_Is = np.max(np.abs(Is_calc_coh_np - Is_calc_thick))
-diff_max_Ic = np.max(np.abs(Ic_calc_coh_np - Ic_calc_thick))
-diff_max_psi = np.max(np.abs(psi_np_deg - psi_calc_deg))
-
-print("\n================ COMPARACIÓN coh_tmm VS coh_tmm_torch_batched ================")
-print(f"Diferencia máxima absoluta en Is : {diff_max_Is:.2e}")
-print(f"Diferencia máxima absoluta en Ic : {diff_max_Ic:.2e}")
-print(f"Diferencia máxima absoluta en Psi: {diff_max_psi:.2e} °")
-print("================================================================================")
-
-# --- GRAFICADO DE RESULTADOS (tmm.coh_tmm NumPy) ---
-fig, axes = plt.subplots(3, 1, figsize=(12, 12))
-
-# 1. Reflectancias Rs y Rp (NumPy)
-axes[0].plot(wl_exp, R_s_np, 'b-', label='$R_s$ (coh_tmm NumPy)', linewidth=1.5)
-axes[0].plot(wl_exp, R_p_np, 'r-', label='$R_p$ (coh_tmm NumPy)', linewidth=1.5)
-axes[0].set_title(f'Reflectancias $R_s$ y $R_p$ con coh_tmm (Espesor Total = {d_total_test:.1f} nm)')
-axes[0].set_xlabel('Longitud de onda [nm]')
-axes[0].set_ylabel('Reflectancia')
-axes[0].grid(True)
-axes[0].legend()
-
-# 2. Componentes Is e Ic (NumPy)
-axes[1].plot(wl_exp, Is_exp, 'b.', label='$I_s$ exp', alpha=0.5)
-axes[1].plot(wl_exp, Is_calc_coh_np, 'b-', label=f'$I_s$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
-axes[1].plot(wl_exp, Ic_exp, 'r.', label='$I_c$ exp', alpha=0.5)
-axes[1].plot(wl_exp, Ic_calc_coh_np, 'r-', label=f'$I_c$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
-axes[1].set_title(f'Componentes $I_s$ e $I_c$ con coh_tmm ({d_total_test:.1f} nm)')
-axes[1].set_xlabel('Longitud de onda [nm]')
-axes[1].set_ylabel('Intensidad Modulada')
-axes[1].grid(True)
-axes[1].legend()
-
-# 3. Parámetros Psi y Delta (NumPy)
-axes[2].plot(wl_exp, psi_exp, 'g.', label='$\\Psi$ exp', alpha=0.5)
-axes[2].plot(wl_exp, psi_np_deg, 'g-', label=f'$\\Psi$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
-axes[2].plot(wl_exp, delta_exp, 'm.', label='$\\Delta$ exp', alpha=0.5)
-axes[2].plot(wl_exp, delta_np_deg, 'm-', label=f'$\\Delta$ coh_tmm ({d_total_test:.0f} nm)', linewidth=1.8)
-axes[2].set_title(f'Parámetros Elipsométricos $\\Psi$ y $\\Delta$ con coh_tmm ({d_total_test:.1f} nm)')
-axes[2].set_xlabel('Longitud de onda [nm]')
-axes[2].set_ylabel('Grados [°]')
-axes[2].grid(True)
-axes[2].legend()
-
-plt.tight_layout()
+plt.figure(figsize=(10,6))
+plt.plot(wl_exp,R_s_np,label='reflectancia simulada')
+plt.plot(lams_exp,R_exp,label='reflectancia medida')
+plt.plot(wl_exp,R_s_si_np,label='reflectancia silicio')
+plt.xlabel("Longitud de onda [nm]")
+plt.ylabel("Reflectancia")
+plt.ylim([0.0,1.0])
+plt.xlim([np.min(wl_exp),np.max(wl_exp)])
+plt.legend()
+plt.grid()
 plt.show()
 # %%

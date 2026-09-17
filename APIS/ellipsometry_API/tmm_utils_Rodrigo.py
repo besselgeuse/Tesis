@@ -590,7 +590,10 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
     - layer_names: Lista opcional con los nombres de las capas.
     """
     device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
-    print(f"Ejecutando en dispositivo: {device}")
+    if use_cuda and not torch.cuda.is_available():
+        print("Ejecutando en dispositivo: cpu (CUDA no disponible en el sistema)")
+    else:
+        print(f"Ejecutando en dispositivo: {device}")
     
     if std_Is is not None:
         if not isinstance(std_Is, torch.Tensor):

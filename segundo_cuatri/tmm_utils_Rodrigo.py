@@ -11,6 +11,8 @@ Utilities to calculate RAT of optical stacks with tmm_vec
 
 import numpy as np
 import os
+import re
+import ast
 import pickle
 import sys
 import importlib.util
@@ -173,6 +175,158 @@ def load_interp_in3(filename, unit='A'):
     k_fn = interp1d(wv_k, k_vals, fill_value=(k_vals[0], k_vals[-1]), bounds_error=False)
     
     return n_fn, k_fn
+
+
+def guardar_resultados_txt(salida_path, data_file, wl_exp, Is_exp, Is_fit, Ic_exp, Ic_fit, 
+                           psi_exp, psi_fit, delta_exp, delta_fit, 
+                           best_thicknesses, best_params):
+    """Guarda los resultados del ajuste en un archivo TXT."""
+    with open(salida_path, 'w', encoding='utf-8') as f:
+        f.write("# ========================================================\n")
+        f.write("# RESULTADOS DE AJUSTE ELIPSOMÉTRICO (AUTORANGE + TMM)\n")
+        f.write("# ========================================================\n")
+        f.write(f"# Archivo de origen: {os.path.basename(data_file)}\n")
+        f.write(f"# Espesores óptimos (nm): {list(best_thicknesses)}\n")
+        if best_params:
+            f.write(f"# Error mínimo (Chi2 Red / MSE): {best_params.get('chi2_min', 0.0):.6e}\n")
+            f.write("# Parámetros de dispersión optimizados:\n")
+            for name, params in best_params.items():
+                if name != 'chi2_min' and not isinstance(name, int):
+                    f.write(f"#   Capa '{name}': {params}\n")
+        f.write("# ========================================================\n")
+        f.write("# Wavelength_nm\tIs_exp\tIs_fit\tIc_exp\tIc_fit\tPsi_exp_deg\tPsi_fit_deg\tDelta_exp_deg\tDelta_fit_deg\n")
+        
+        for i in range(len(wl_exp)):
+            f.write(f"{wl_exp[i]:.4f}\t{Is_exp[i]:.6f}\t{Is_fit[i]:.6f}\t"
+                    f"{Ic_exp[i]:.6f}\t{Ic_fit[i]:.6f}\t{psi_exp[i]:.4f}\t"
+                    f"{psi_fit[i]:.4f}\t{delta_exp[i]:.4f}\t{delta_fit[i]:.4f}\n")
+    print(f"--> Resultados guardados exitosamente en: {salida_path}")
+
+
+def leer_datos_guardados(path):
+    """
+    Carga y reconstruye automáticamente los datos y metadatos guardados en un archivo TXT de resultados.
+    
+    Parámetros:
+    -----------
+    path : str
+        Ruta al archivo TXT de resultados de ajuste (generado por `guardar_resultados_txt`).
+        
+    Retorna:
+    --------
+    data_file : str
+        Nombre del archivo original de mediciones elipsométricas.
+    wl_exp : np.ndarray
+        Vector 1D de longitudes de onda [nm].
+    Is_exp : np.ndarray
+        Vector 1D de la componente Is experimental.
+    best_Is_curve : np.ndarray
+        Vector 1D de la componente Is ajustada / calculada (Is_fit).
+    Ic_exp : np.ndarray
+        Vector 1D de la componente Ic experimental.
+    best_Ic_curve : np.ndarray
+        Vector 1D de la componente Ic ajustada / calculada (Ic_fit).
+    psi_exp : np.ndarray
+        Vector 1D del ángulo Psi experimental [grados].
+    psi_fit : np.ndarray
+        Vector 1D del ángulo Psi ajustado [grados].
+    delta_exp : np.ndarray
+        Vector 1D del ángulo Delta experimental [grados].
+    delta_fit : np.ndarray
+        Vector 1D del ángulo Delta ajustado [grados].
+    best_thicknesses : np.ndarray
+        Vector 1D con los espesores óptimos encontrados [nm].
+    best_params : dict
+        Diccionario con los parámetros óptimos del ajuste (chi2_min y parámetros por capa).
+    """
+    data_file = ""
+    best_thicknesses = np.array([])
+    best_params = {}
+    
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        for line in f:
+            line_str = line.strip()
+            if not line_str.startswith('#'):
+                break
+            
+            # 1. Archivo de origen
+            if 'Archivo de origen:' in line_str:
+                data_file = line_str.split('Archivo de origen:', 1)[1].strip()
+                
+            # 2. Espesores óptimos
+            elif 'Espesores' in line_str and ':' in line_str:
+                th_str = line_str.split(':', 1)[1].strip()
+                try:
+                    best_thicknesses = np.array(
+                        eval(th_str, {"__builtins__": None, "np": np, "float64": np.float64, "list": list, "tuple": tuple}),
+                        dtype=float
+                    )
+                except Exception:
+                    cleaned = re.sub(r'(?:np\.)?float\d*\(|\btensor\(', '', th_str).replace(')', '')
+                    matches = re.findall(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', cleaned)
+                    best_thicknesses = np.array([float(x) for x in matches], dtype=float)
+                    
+            # 3. Error mínimo (Chi2 Red / MSE)
+            elif ('Error m' in line_str or 'Error min' in line_str) and ':' in line_str:
+                val_str = line_str.split(':', 1)[1].strip()
+                try:
+                    best_params['chi2_min'] = float(val_str)
+                except Exception:
+                    pass
+                    
+            # 4. Parámetros por capa
+            elif 'Capa ' in line_str and ':' in line_str:
+                m = re.search(r"Capa\s+['\"](.*?)['\"]\s*:\s*(.*)", line_str)
+                if m:
+                    capa_name = m.group(1).strip()
+                    dict_str = m.group(2).strip()
+                    try:
+                        parsed_dict = eval(
+                            dict_str,
+                            {"__builtins__": None, "True": True, "False": False, "None": None, "np": np, "float64": np.float64}
+                        )
+                    except Exception:
+                        parsed_dict = ast.literal_eval(dict_str)
+                    best_params[capa_name] = parsed_dict
+
+    # Carga de columnas de datos numéricos
+    wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve, psi_exp, psi_fit, delta_exp, delta_fit = np.loadtxt(
+        path, comments='#', unpack=True
+    )
+    
+    return (
+        data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,
+        psi_exp, psi_fit, delta_exp, delta_fit,
+        best_thicknesses, best_params
+    )
+
+def interpolar_todo(wl_exp=None,psi_exp=None,delta_exp=None,Ic_exp=None,Is_exp=None):
+    """
+    Esta función tiene el proposito de interpolar todos los datos experimentales 
+    utiles medidos por el elipsometro HORIBA de CNEA, en el rango de longitudes de onda
+    que van desde los 440 nm hasta los 830 nm, que es el rango de medición valido
+    para este elipsometro.
+    """
+
+    def interpolar_datos(lams, datos=None):
+        if datos is not None:
+            return interp1d(lams,datos,kind='linear',fill_value='extrapolate')
+        else:
+            return None
+    mask_wl = np.where((wl_exp >= 440) & (wl_exp <= 830))
+    wl_exp = wl_exp[mask_wl]
+    psi_exp = psi_exp[mask_wl]
+    delta_exp = delta_exp[mask_wl]
+    Ic_exp = Ic_exp[mask_wl]
+    Is_exp = Is_exp[mask_wl]
+
+    psi_exp_interp = interpolar_datos(wl_exp,psi_exp)
+    delta_exp_interp = interpolar_datos(wl_exp,delta_exp)
+    Ic_exp_interp = interpolar_datos(wl_exp,Ic_exp)
+    Is_exp_interp = interpolar_datos(wl_exp,Is_exp)
+
+    return wl_exp, psi_exp_interp(wl_exp), delta_exp_interp(wl_exp), Ic_exp_interp(wl_exp), Is_exp_interp(wl_exp)    
+
 
 
 def stack2tmm(stack, materials, lams, add_inf=True):
@@ -374,6 +528,10 @@ def calculate_RT_torch(stack, materials, lams, weights=None, pol='s', th_0=0.0, 
             
     d_opt = d_initial.clone().detach().requires_grad_(True)
     
+    # Trackers del mínimo histórico por semilla
+    best_losses_per_start = torch.full((num_starts,), float('inf'), dtype=torch.float64, device=device)
+    best_d_opt_data = torch.zeros_like(d_initial)
+    
     # 3. OPTIMIZADOR
     optimizer = optim.Adam([d_opt], lr=lr)
     
@@ -433,16 +591,25 @@ def calculate_RT_torch(stack, materials, lams, weights=None, pol='s', th_0=0.0, 
         loss.backward()
         optimizer.step()
         
-        if epoch % 50 == 0:
+        # Prevenir saturación de sigmoide y actualizar histórico de mejores logits
+        with torch.no_grad():
+            d_opt.data.clamp_(-5, 5)
+            improved = loss_per_start < best_losses_per_start
+            if improved.any():
+                best_losses_per_start[improved] = loss_per_start[improved]
+                best_d_opt_data[improved] = d_opt.data[improved]
+        
+        if epoch % 50 == 0 or epoch == num_epochs - 1:
             mejor_R_actual = loss_per_start.min().item()
+            mejor_historico = best_losses_per_start.min().item()
             if weights is None:
-                print(f"Epoch {epoch}/{num_epochs} | Mejor Reflectancia Media: {mejor_R_actual*100:.2f}%")
+                print(f"Epoch {epoch}/{num_epochs} | Mejor R Actual: {mejor_R_actual*100:.2f}% | Mínimo Histórico: {mejor_historico*100:.2f}%")
             else:
-                print(f"Epoch {epoch}/{num_epochs} | Mejor Reflectancia Media Ponderada: {mejor_R_actual*100:.2f}%")
+                print(f"Epoch {epoch}/{num_epochs} | Mejor R Ponderada Actual: {mejor_R_actual*100:.2f}% | Mínimo Histórico: {mejor_historico*100:.2f}%")
 
-    # 5. EXTRACCIÓN DEL MÍNIMO GLOBAL
+    # 5. EXTRACCIÓN DEL MÍNIMO GLOBAL (USANDO LOS LOGITS HISTÓRICOS MÍNIMOS)
     with torch.no_grad():
-        d_final_fisico = reconstruct_d_fisico(d_opt)
+        d_final_fisico = reconstruct_d_fisico(best_d_opt_data)
         d_full = torch.cat([inf_col, d_final_fisico, inf_col], dim=1)
         d_full_3d = d_full.unsqueeze(-1).expand(-1, -1, num_wl)
         if not use_inc:
@@ -458,6 +625,11 @@ def calculate_RT_torch(stack, materials, lams, weights=None, pol='s', th_0=0.0, 
     else:
         loss_final = (R_final * weights).sum(dim=-1)
         
+    valid_mask = torch.isfinite(loss_final)
+    loss_final[~valid_mask] = float('inf')
+    if not torch.any(valid_mask):
+        raise ValueError("Todas las semillas produjeron valores de loss NaN o Inf durante la optimización.")
+        
     best_idx = loss_final.argmin()
     
     best_thicknesses = d_final_fisico[best_idx].cpu().detach().numpy()
@@ -470,6 +642,99 @@ def calculate_RT_torch(stack, materials, lams, weights=None, pol='s', th_0=0.0, 
     else:
         print(f"Reflectancia media ponderada óptima: {loss_final[best_idx].item()*100:.2f}%")
     
+    return best_thicknesses, best_R_curve
+
+
+def autorange_calculate_RT_torch(stack, materials, lams, weights=None, pol='s', th_0=0.0, 
+                                 num_starts=50, num_epochs=150, lr=2.0, use_cuda=False,
+                                 tolerance=0.01, max_attempts=10, expansion_factor=0.25, contraction_factor=0.1):
+    """
+    Optimiza el espesor de un stack de capas delgadas usando PyTorch de forma recursiva (Autorange).
+    Si detecta saturación en los límites de espesor de alguna capa, amplía el rango en esa dirección
+    y reduce el opuesto, volviendo a ejecutar la optimización hasta que ningún parámetro sature
+    o se alcance el límite de intentos (max_attempts).
+    """
+    import copy
+    
+    stack_work = copy.deepcopy(stack)
+    
+    # Identificar capas finitas internas
+    if len(stack_work) >= 3 and stack_work[0][0] == np.inf and stack_work[-1][0] == np.inf:
+        finite_start_idx = 1
+    else:
+        finite_start_idx = 0
+        
+    def adjust_val_range(val_min, val_max, val_opt, min_abs=0.0, max_abs=None):
+        width = val_max - val_min
+        if width <= 0:
+            return val_min, val_max, False
+        
+        # Verificar límite superior
+        if (val_max - val_opt) < tolerance * width:
+            val_max_new = val_max + expansion_factor * width
+            if max_abs is not None:
+                val_max_new = min(val_max_new, max_abs)
+            if val_max_new > val_max:
+                val_min_new = val_min + contraction_factor * width
+                if min_abs is not None:
+                    val_min_new = max(val_min_new, min_abs)
+            else:
+                val_min_new = val_min
+                
+            if (val_min_new != val_min or val_max_new != val_max) and val_min_new < val_max_new:
+                return val_min_new, val_max_new, True
+                
+        # Verificar límite inferior
+        elif (val_opt - val_min) < tolerance * width:
+            val_min_new = val_min - expansion_factor * width
+            if min_abs is not None:
+                val_min_new = max(val_min_new, min_abs)
+            if val_min_new < val_min:
+                val_max_new = val_max - contraction_factor * width
+                if max_abs is not None:
+                    val_max_new = min(val_max_new, max_abs)
+            else:
+                val_max_new = val_max
+                
+            if (val_min_new != val_min or val_max_new != val_max) and val_min_new < val_max_new:
+                return val_min_new, val_max_new, True
+                
+        return val_min, val_max, False
+
+    for attempt in range(max_attempts):
+        print(f"\n==================================================")
+        print(f"Autorange RT: Intento {attempt + 1} de {max_attempts}")
+        current_bounds = [layer[0] for layer in stack_work[finite_start_idx : len(stack_work) - finite_start_idx]]
+        print(f"Límites de espesores actuales: {current_bounds}")
+        print(f"==================================================")
+        
+        best_thicknesses, best_R_curve = calculate_RT_torch(
+            stack=stack_work, materials=materials, lams=lams, weights=weights,
+            pol=pol, th_0=th_0, num_starts=num_starts, num_epochs=num_epochs,
+            lr=lr, use_cuda=use_cuda
+        )
+        
+        range_changed = False
+        finite_layers = stack_work[finite_start_idx : len(stack_work) - finite_start_idx]
+        
+        for i, layer in enumerate(finite_layers):
+            b = layer[0]
+            if isinstance(b, (tuple, list)):
+                d_min, d_max = float(b[0]), float(b[1])
+                if d_min != d_max:
+                    val_opt = float(best_thicknesses[i])
+                    new_min, new_max, changed = adjust_val_range(d_min, d_max, val_opt, min_abs=0.0)
+                    if changed:
+                        stack_work[finite_start_idx + i][0] = (new_min, new_max)
+                        print(f"-> Rango ajustado para Capa {i} ({layer[1]}): ({d_min:.2f}, {d_max:.2f}) -> ({new_min:.2f}, {new_max:.2f}) nm (óptimo actual: {val_opt:.2f} nm)")
+                        range_changed = True
+                        
+        if not range_changed:
+            print(f"\n¡Autorange RT completado con éxito! Ningún parámetro tocó los límites.")
+            break
+        elif attempt == max_attempts - 1:
+            print(f"\nAdvertencia: Autorange RT alcanzó el número máximo de intentos ({max_attempts}).")
+            
     return best_thicknesses, best_R_curve
 
 
@@ -619,7 +884,10 @@ def fit_ellipsometry_torch(n_list, d_bounds, lams, Is_exp, Ic_exp, Data_R=None, 
       Si para una semilla alguna λ produce n(λ) > límite en una capa con modelo de Cauchy, esa semilla se toma como inválida.
     """
     device = torch.device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
-    print(f"Ejecutando en dispositivo: {device}")
+    if use_cuda and not torch.cuda.is_available():
+        print("Ejecutando en dispositivo: cpu (CUDA no disponible en el sistema)")
+    else:
+        print(f"Ejecutando en dispositivo: {device}")
     
     if std_Is is not None:
         if not isinstance(std_Is, torch.Tensor):
