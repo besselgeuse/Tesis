@@ -1,5 +1,5 @@
 """
-14 de septiembre de 2026
+14 de abril de 2026
 voy a ajustar los espesores de una celda de TiO2 con y sin nanotubos, encima
 de la misma voy a poner alumina con un 50% de porosidad.
 """
@@ -47,12 +47,12 @@ materials = {
 materials['T1_densa'] = (materials['T1_densa'][0], materials['Rutilo'][1])
 materials['T1_porosa'] = (materials['T1_porosa'][0], materials['Rutilo'][1])
 materials['Al2O3_porosa'] = (brugg_fn(materials['Al2O3'][0], constant_fn(1.0), 0.5), materials['Al2O3'][1])
-materials['Al2O3_T1_densa'] = (brugg_fn(materials['Al2O3'][0], materials['T1_densa'][0], 0.5), materials['T1_densa'][1])
 #%%
 stack = [
                   [np.inf, 'air', 'i'],
-                  [(0,150),'Al2O3_porosa','c'],
-                  [(0,150),'Rutilo','c'],
+                  #[(0,100),'Al2O3_porosa','c'],
+                  [(0,100),'T1_porosa','c'],
+                  [(0,100),'T1_densa','c'],
                   [np.inf, 'Si', 'i'],
     ]
 #%%
@@ -79,7 +79,7 @@ thickness, R_curve = calculate_RT_torch(stack,
                                     lams,
                                     weights=weight_am0, pol='s',
                                     th_0=0.0,
-                                    num_starts=400, 
+                                    num_starts=1000, 
                                     num_epochs=150, 
                                     lr=1.0, 
                                     use_cuda=True)
@@ -106,19 +106,7 @@ def guardar_curva_R(lams,R_curve,path):
         for i in range(len(lams)):
             f.write(f'{lams[i]}\t{R_curve[i]}\n')
     return None
-def leer_curva_R(path):
-    # skiprows=3 salta las 3 primeras líneas de metadatos/cabecera
-    # unpack=True desempaqueta directamente las columnas en variables separadas
-    lams, R_curve = np.loadtxt(path, skiprows=3, unpack=True)
-    return lams, R_curve
-
 #%%
-guardar_curva_R(lams,R_curve,f'../Files/reflectancias_optimas/R_curve_Al2O3_porosa_Rutilo_si.txt')    
-# %%
-lams,R_curve = leer_curva_R(f'../Files/reflectancias_optimas/R_curve_Al2O3_porosa_T1_porosa_T1_densa_Si.txt')
-
-plt.plot(lams,R_curve)
-plt.grid()
-plt.legend()
-plt.show()
+guardar_curva_R(lams,R_curve,f'../Files/reflectancias_optimas/R_curve_T1_porosa_T1_densa_Si.txt')
+    
 # %%
