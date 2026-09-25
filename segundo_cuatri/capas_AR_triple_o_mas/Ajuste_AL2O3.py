@@ -52,7 +52,7 @@ materials['T1_densa'] = (materials['T1_densa'][0], materials['Rutilo'][1])
 materials['T1_porosa'] = (materials['T1_porosa'][0], materials['Rutilo'][1])
 
 #%% CARGA DE DATOS Y CONFIGURACIÓN DEL STACK
-DATA_dir = r'../Files/24-9-26/2026.09.24/SiO2_Si.S2.txt'
+DATA_dir = r'../Files/24-9-26/2026.09.24/Al2O3_porosa_Si.A11.txt'
 
 wl_exp,psi_exp,delta_exp,Ic_exp_raw,Is_exp_raw = np.loadtxt(DATA_dir,skiprows=61,usecols=(0,1,2,3,4),max_rows=1334-61,unpack=True)
 
@@ -64,20 +64,20 @@ Ic_exp = np.sin(2 * psi_rad) * np.cos(delta_rad)
 
 wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp = interpolar_todo(wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp)
 # Definición del stack óptico y modelos de dispersión
-layer_names = ['air', 'SiO2_poroso','SiO2', 'Si']
+layer_names = ['air', 'Al2O3_porosa_Si.A10','Al2O3_Si.A10', 'Si']
 layer_models = [
     None,
-    {'model': 'bruggeman', 'f_bounds':[(0,1)]},
-    {'model': 'cauchy', 'bounds': [(0, 3), (-10, 10), (-10, 10)]},
+    {'model': 'bruggeman', 'f_bounds':[(0.4,1.0)]},
+    {'model': 'cauchy', 'bounds': [(0, 4), (-25, 25), (-25, 25)]},
     None
 ]
 
 # Rangos de espesores iniciales para las capas finitas (nm)
 # Ajustados al régimen físico de ~900 nm totales (~450 nm nanotubos + ~450 nm Al2O3)
-d_bounds = [(0.0, 15.0),(0.0, 15.0)]
+d_bounds = [(400.0, 750.0), (0.0, 5.0)]
 
 # n_max_limits: límites máximos para n en cada capa (excepto aire/substraído)
-n_max_limits = [None, None,1.6, None]
+n_max_limits = [None, None, 1.8, None]
 
 # CONSTRUCCIÓN DE TENSORES Y OPTIMIZACIÓN AUTORANGE
 n_list_np = []
@@ -109,7 +109,7 @@ best_thicknesses, best_Is_curve, best_Ic_curve, best_params = autorange_fit_elli
     layer_models=layer_models,
     layer_names=layer_names,
     n_max_limits=n_max_limits,
-    max_attempts=5
+    max_attempts=15
 )
 #%%
 # Reconstruir Psi y Delta calculadas
@@ -128,10 +128,10 @@ print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
 # data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,psi_exp, psi_fit, delta_exp, delta_fit,best_thicknesses, best_params = leer_datos_guardados(path)
 
 #%% GRAFICADO DE RESULTADOS
-material = 'SiO2'
-# A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
-# indice_SiO2 = cauchy_fn(A,B,C)(wl_exp)
-d_SiO2 = best_thicknesses[0]
+material = 'Al2O3_Si.A10'
+A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
+indice_TiO2 = cauchy_fn(A,B,C)(wl_exp)
+d_TiO2 = best_thicknesses[0]
 
 #indice_SiO2_porosa = brugg_fn(cauchy_fn(A,B,C), constant_fn(1.0), f_air)(wl_exp)
 
@@ -145,12 +145,12 @@ ax2.plot(wl_exp, Ic_exp, 'r.', label='$I_c$ exp', alpha=0.6)
 ax2.plot(wl_exp,best_Ic_curve,'r-',label='$I_c$ fit', linewidth=1.8)
 ax1.set_xlabel('Longitud de onda [nm]')
 ax1.set_ylabel('Componentes $I_s$')
-ax1.set_ylim(np.min(best_Is_curve)-0.1,np.max(best_Is_curve)+0.1)
+ax1.set_ylim(np.min(Is_exp)-0.1,np.max(Is_exp)+0.1)
 ax1.grid(True)
 ax1.legend()
 ax2.set_xlabel('Longitud de onda [nm]')
 ax2.set_ylabel('Componentes $I_c$')
-ax2.set_ylim(np.min(best_Ic_curve)-0.1,np.max(best_Ic_curve)+0.1)
+ax2.set_ylim(np.min(Ic_exp)-0.1,np.max(Ic_exp)+0.1)
 ax2.grid(True)
 ax2.legend()
 plt.tight_layout()
@@ -158,10 +158,10 @@ plt.show()
 
 fig, axes = plt.subplots(1,1,figsize=(10,8))
 ax = axes
-ax.plot(wl_exp,indice_SiO2)
+ax.plot(wl_exp,indice_TiO2)
 ax.set_xlabel('Longitud de onda [nm]')
 ax.set_ylabel('Índice de refracción')
-ax.set_title(f'Índice de refracción del SiO2')
+ax.set_title(f'Índice de refracción del TiO2')
 ax.grid(True)
 plt.show()
 
@@ -171,9 +171,9 @@ print(best_thicknesses)
 print("mejores parametros:")
 print(best_params)
 #%% CELDA PARA GUARDAR O CARGAR ÍNDICES DE REFRACCIÓN
-#guardar_indice_refraccion(wl_exp, indice_Alumina, material,data_dir= '../Files/24-9-26/2026.09.24/indices/TiO2_RTP_oxigeno.T1-2_indice.txt')
-lams,n_TiO2_oxigeno = np.loadtxt('../Files/24-9-26/2026.09.24/indices/indices/TiO2_RTP_oxigeno.txt',skiprows=2,unpack=True)
-lams,n_TiO2_aire = np.loadtxt('../Files/24-9-26/2026.09.24/indices/indices/TiO2_RTP_aire.txt',skiprows=2,unpack=True)
+guardar_indice_refraccion(wl_exp, indice_TiO2, material,salida_path= '../Files/24-9-26/2026.09.24/indices/TiO2_RTP_aire.T1-2_indice.txt')
+lams,n_TiO2_oxigeno = np.loadtxt('../Files/24-9-26/2026.09.24/indices/TiO2_RTP_oxigeno.T1-2_indice.txt',skiprows=2,unpack=True)
+lams,n_TiO2_aire = np.loadtxt('../Files/24-9-26/2026.09.24/indices/TiO2_RTP_aire.T1-2_indice.txt',skiprows=2,unpack=True)
 
 plt.plot(lams,n_TiO2_oxigeno,label='TiO2_RTP_oxigeno')
 plt.plot(lams,n_TiO2_aire,label='TiO2_RTP_aire')
@@ -184,7 +184,7 @@ plt.grid(True)
 plt.legend()
 plt.show()
 #%% GUARDAR RESULTADOS EN TXT
-salida_txt = '../Files/24-9-26/2026.09.24/fit_results/SiO2_Si.S1-2_fit_results.txt'
+salida_txt = '../Files/24-9-26/2026.09.24/fit_results/TiO2_RTP_aire.T1-2_fit_results.txt'
 guardar_resultados_txt(
     salida_txt, DATA_dir, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,
     psi_exp, psi_fit, delta_exp, delta_fit, best_thicknesses, best_params
