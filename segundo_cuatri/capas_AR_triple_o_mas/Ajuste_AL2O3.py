@@ -52,7 +52,7 @@ materials['T1_densa'] = (materials['T1_densa'][0], materials['Rutilo'][1])
 materials['T1_porosa'] = (materials['T1_porosa'][0], materials['Rutilo'][1])
 
 #%% CARGA DE DATOS Y CONFIGURACIÓN DEL STACK
-DATA_dir = r'../Files/24-9-26/2026.09.24/SiO2_Si.S2-2.txt'
+DATA_dir = r'../Files/24-9-26/2026.09.24/SiO2_Si.S2.txt'
 
 wl_exp,psi_exp,delta_exp,Ic_exp_raw,Is_exp_raw = np.loadtxt(DATA_dir,skiprows=61,usecols=(0,1,2,3,4),max_rows=1334-61,unpack=True)
 
@@ -64,19 +64,20 @@ Ic_exp = np.sin(2 * psi_rad) * np.cos(delta_rad)
 
 wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp = interpolar_todo(wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp)
 # Definición del stack óptico y modelos de dispersión
-layer_names = ['air', 'SiO2', 'Si']
+layer_names = ['air', 'SiO2_poroso','SiO2', 'Si']
 layer_models = [
     None,
-    {'model': 'cauchy', 'bounds': [(1, 5), (-25, 25), (-25, 25)]},
+    {'model': 'bruggeman', 'f_bounds':[(0,1)]},
+    {'model': 'cauchy', 'bounds': [(0, 3), (-10, 10), (-10, 10)]},
     None
 ]
 
 # Rangos de espesores iniciales para las capas finitas (nm)
 # Ajustados al régimen físico de ~900 nm totales (~450 nm nanotubos + ~450 nm Al2O3)
-d_bounds = [(0.0, 20.0)]
+d_bounds = [(0.0, 15.0),(0.0, 15.0)]
 
 # n_max_limits: límites máximos para n en cada capa (excepto aire/substraído)
-n_max_limits = [None, 1.6, None]
+n_max_limits = [None, None,1.6, None]
 
 # CONSTRUCCIÓN DE TENSORES Y OPTIMIZACIÓN AUTORANGE
 n_list_np = []
@@ -101,37 +102,38 @@ best_thicknesses, best_Is_curve, best_Ic_curve, best_params = autorange_fit_elli
     Is_exp=Is_exp_torch,
     Ic_exp=Ic_exp_torch,
     th_0=th_0_rad,
-    num_starts=400,
-    num_epochs=100,
-    lr=1.5,
+    num_starts=1500,
+    num_epochs=150,
+    lr=1,
     use_cuda=True,
     layer_models=layer_models,
     layer_names=layer_names,
     n_max_limits=n_max_limits,
-    max_attempts=15
+    max_attempts=5
 )
-
+#%%
 # Reconstruir Psi y Delta calculadas
-# psi_fit, delta_fit = transform_I_to_psi_delta(best_Is_curve, best_Ic_curve)
+psi_fit, delta_fit = transform_I_to_psi_delta(best_Is_curve, best_Ic_curve)
 
-# print("\n" + "=" * 60)
-# print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
+print("\n" + "=" * 60)
+print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
 # if best_params:
-#     print(f"Parámetros de dispersión del Al2O3: {best_params['Al2O3']}")
-# print("=" * 60)
+
+#     print(f"Parámetros de dispersión del SiO2: {best_params['SiO2']}")
+#     print("=" * 60)
 
 #%%
 #celda para cargar datos optimizados ya guardados
-path = '../Files/24-9-26/2026.09.24/fit_results/TiO2_RTP_oxigeno.T1-2_fit_results.txt'
-data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,psi_exp, psi_fit, delta_exp, delta_fit,best_thicknesses, best_params = leer_datos_guardados(path)
+# path = '../Files/24-9-26/2026.09.24/fit_results/TiO2_RTP_oxigeno.T1-2_fit_results.txt'
+# data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,psi_exp, psi_fit, delta_exp, delta_fit,best_thicknesses, best_params = leer_datos_guardados(path)
 
 #%% GRAFICADO DE RESULTADOS
 material = 'SiO2'
-A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
-indice_Alumina = cauchy_fn(A,B,C)(wl_exp)
-d_Al2O3_nanotube = best_thicknesses[0]
+# A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
+# indice_SiO2 = cauchy_fn(A,B,C)(wl_exp)
+d_SiO2 = best_thicknesses[0]
 
-#indice_Alumina_nanotube = brugg_fn(cauchy_fn(A,B,C), constant_fn(1.0), f_air)(wl_exp)
+#indice_SiO2_porosa = brugg_fn(cauchy_fn(A,B,C), constant_fn(1.0), f_air)(wl_exp)
 
 fig, axes = plt.subplots(2, 1, figsize=(12, 10))
 ax1 = axes[0]
@@ -156,10 +158,10 @@ plt.show()
 
 fig, axes = plt.subplots(1,1,figsize=(10,8))
 ax = axes
-ax.plot(wl_exp,indice_Alumina)
+ax.plot(wl_exp,indice_SiO2)
 ax.set_xlabel('Longitud de onda [nm]')
 ax.set_ylabel('Índice de refracción')
-ax.set_title(f'Índice de refracción de los nanotubos de {material}')
+ax.set_title(f'Índice de refracción del SiO2')
 ax.grid(True)
 plt.show()
 
@@ -182,7 +184,7 @@ plt.grid(True)
 plt.legend()
 plt.show()
 #%% GUARDAR RESULTADOS EN TXT
-salida_txt = '../Files/24-9-26/2026.09.24/fit_results/TiO2_RTP_aire.T1-2_fit_results.txt'
+salida_txt = '../Files/24-9-26/2026.09.24/fit_results/SiO2_Si.S1-2_fit_results.txt'
 guardar_resultados_txt(
     salida_txt, DATA_dir, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,
     psi_exp, psi_fit, delta_exp, delta_fit, best_thicknesses, best_params

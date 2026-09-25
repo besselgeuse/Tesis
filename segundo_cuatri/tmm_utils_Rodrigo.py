@@ -203,90 +203,13 @@ def guardar_resultados_txt(salida_path, data_file, wl_exp, Is_exp, Is_fit, Ic_ex
     print(f"--> Resultados guardados exitosamente en: {salida_path}")
 
 
-def guardar_indice_refraccion(wl, n, titulo, data_dir=None):
-    """
-    Guarda la longitud de onda y el índice de refracción en un archivo de texto con dos columnas.
+def guardar_indice_refraccion(wl, n, titulo, salida_path=None):
     
-    El archivo se guarda en una carpeta llamada 'indices' ubicada al mismo nivel que la de 'fit_results'.
-    El nombre del archivo corresponde al título/nombre del material suministrado.
-    
-    Parámetros:
-    -----------
-    wl : array-like
-        Vector de longitudes de onda [nm].
-    n : array-like
-        Vector de índice de refracción (si es complejo, se toma la parte real).
-    titulo : str
-        Nombre del material o título del archivo.
-    data_dir : str, opcional
-        Ruta del archivo de datos o directorio base donde se ubica 'fit_results'.
-        Si es None, se busca automáticamente o se utiliza el directorio actual.
-        
-    Retorna:
-    --------
-    salida_path : str
-        Ruta completa del archivo generado.
-    """
-    # Manejar tensores PyTorch si corresponde
-    if hasattr(wl, 'detach'):
-        wl = wl.detach().cpu().numpy()
-    elif hasattr(wl, 'cpu'):
-        wl = wl.cpu().numpy()
-        
-    if hasattr(n, 'detach'):
-        n = n.detach().cpu().numpy()
-    elif hasattr(n, 'cpu'):
-        n = n.cpu().numpy()
-        
-    wl = np.asarray(wl, dtype=float)
-    n_vals = np.asarray(n)
-    if np.iscomplexobj(n_vals):
-        n_vals = np.real(n_vals)
-    else:
-        n_vals = n_vals.astype(float)
-        
-    if len(wl) != len(n_vals):
-        raise ValueError(f"Las longitudes no coinciden: len(wl)={len(wl)} != len(n)={len(n_vals)}")
-        
-    # Determinar carpeta base
-    if data_dir is None:
-        import inspect
-        frame = inspect.currentframe().f_back
-        while frame:
-            if 'DATA_dir' in frame.f_globals:
-                data_dir = frame.f_globals['DATA_dir']
-                break
-            elif 'salida_txt' in frame.f_globals:
-                data_dir = frame.f_globals['salida_txt']
-                break
-            frame = frame.f_back
-        if data_dir is None:
-            data_dir = '.'
-            
-    if os.path.isfile(data_dir) or os.path.splitext(data_dir)[1] != '':
-        base_folder = os.path.dirname(data_dir)
-    else:
-        base_folder = data_dir
-        
-    base_folder = os.path.abspath(base_folder)
-    if os.path.basename(base_folder) == 'fit_results':
-        carpeta_indices = os.path.join(os.path.dirname(base_folder), 'indices')
-    else:
-        carpeta_indices = os.path.join(base_folder, 'indices')
-        
-    os.makedirs(carpeta_indices, exist_ok=True)
-    
-    filename = titulo if str(titulo).endswith('.txt') else f"{titulo}.txt"
-    salida_path = os.path.join(carpeta_indices, filename)
-    
-    with open(salida_path, 'w', encoding='utf-8') as f:
-        f.write(f"# {titulo}\n")
-        f.write("# Longitud_de_onda[nm]\tIndice_refraccion\n")
-        for w_i, n_i in zip(wl, n_vals):
-            f.write(f"{w_i:.4f}\t{n_i:.6f}\n")
-            
-    print(f"--> Índice guardado exitosamente en: {salida_path}")
-    return salida_path
+    with open(salida_path,'w',encoding='utf-8') as f:
+        f.write(f'# {titulo}\n')
+        f.write('# wavelength_nm\tindice_refraccion\n')
+        for i in range(len(wl)):
+            f.write(f'{wl[i]:.4f}\t{n[i]:.6f}\n')
 
 
 
