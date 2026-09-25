@@ -51,7 +51,6 @@ materials['Al2O3_T1_densa'] = (brugg_fn(materials['Al2O3'][0], materials['T1_den
 #%%
 stack = [
                   [np.inf, 'air', 'i'],
-                  [(0,150),'Al2O3_porosa','c'],
                   [(0,150),'Rutilo','c'],
                   [np.inf, 'Si', 'i'],
     ]
