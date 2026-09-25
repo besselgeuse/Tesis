@@ -19,3 +19,7 @@ Thumbs.db
 
 # Jupyter Notebook
 .ipynb_checkpoints/
+
+# Data files
+*.pickle
+**/*.pickle
