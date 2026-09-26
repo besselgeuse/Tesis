@@ -52,32 +52,33 @@ materials['T1_densa'] = (materials['T1_densa'][0], materials['Rutilo'][1])
 materials['T1_porosa'] = (materials['T1_porosa'][0], materials['Rutilo'][1])
 
 #%% CARGA DE DATOS Y CONFIGURACIÓN DEL STACK
-DATA_dir = r'../Files/24-9-26/2026.09.24/Al2O3_porosa_Si.A11.txt'
+DATA_dir = r'../Files/24-9-26/2026.09.24/Al2O3_porosa_Si.A10-2.txt'
 
 wl_exp,psi_exp,delta_exp,Ic_exp_raw,Is_exp_raw = np.loadtxt(DATA_dir,skiprows=61,usecols=(0,1,2,3,4),max_rows=1334-61,unpack=True)
 
 # Recalcular Is e Ic trigonométricamente a partir de Psi y Delta (en grados)
-psi_rad = np.radians(psi_exp)
-delta_rad = np.radians(delta_exp)
-Is_exp = np.sin(2 * psi_rad) * np.sin(delta_rad)
-Ic_exp = np.sin(2 * psi_rad) * np.cos(delta_rad)
+# psi_rad = np.radians(psi_exp)
+# delta_rad = np.radians(delta_exp)
+# Is_exp = np.sin(2 * psi_rad) * np.sin(delta_rad)
+# Ic_exp = np.sin(2 * psi_rad) * np.cos(delta_rad)
 
-wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp = interpolar_todo(wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp)
+wl_exp,psi_exp,delta_exp,Ic_exp,Is_exp = interpolar_todo(wl_exp,psi_exp,delta_exp,Ic_exp_raw,Is_exp_raw)
 # Definición del stack óptico y modelos de dispersión
-layer_names = ['air', 'Al2O3_porosa_Si.A10','Al2O3_Si.A10', 'Si']
+layer_names = ['air', 'Al2O3_porosa_Si.A10-2','Al2O3_Si.A10-2','SiO2', 'Si']
 layer_models = [
     None,
     {'model': 'bruggeman', 'f_bounds':[(0.4,1.0)]},
+    {'model': 'cauchy', 'bounds': [(0, 4), (-25, 25), (-25, 25)]},
     {'model': 'cauchy', 'bounds': [(0, 4), (-25, 25), (-25, 25)]},
     None
 ]
 
 # Rangos de espesores iniciales para las capas finitas (nm)
 # Ajustados al régimen físico de ~900 nm totales (~450 nm nanotubos + ~450 nm Al2O3)
-d_bounds = [(400.0, 750.0), (0.0, 5.0)]
+d_bounds = [(100.0, 250.0), (0.0, 5.0),(0.0,30.0)]
 
 # n_max_limits: límites máximos para n en cada capa (excepto aire/substraído)
-n_max_limits = [None, None, 1.8, None]
+n_max_limits = [None, None, 1.8,1.6 ,None]
 
 # CONSTRUCCIÓN DE TENSORES Y OPTIMIZACIÓN AUTORANGE
 n_list_np = []
@@ -102,14 +103,14 @@ best_thicknesses, best_Is_curve, best_Ic_curve, best_params = autorange_fit_elli
     Is_exp=Is_exp_torch,
     Ic_exp=Ic_exp_torch,
     th_0=th_0_rad,
-    num_starts=1500,
+    num_starts=500,
     num_epochs=150,
     lr=1,
     use_cuda=True,
     layer_models=layer_models,
     layer_names=layer_names,
     n_max_limits=n_max_limits,
-    max_attempts=15
+    max_attempts=10
 )
 #%%
 # Reconstruir Psi y Delta calculadas
@@ -128,7 +129,7 @@ print(f"Espesores óptimos encontrados: {best_thicknesses} nm")
 # data_file, wl_exp, Is_exp, best_Is_curve, Ic_exp, best_Ic_curve,psi_exp, psi_fit, delta_exp, delta_fit,best_thicknesses, best_params = leer_datos_guardados(path)
 
 #%% GRAFICADO DE RESULTADOS
-material = 'Al2O3_Si.A10'
+material = 'Al2O3_Si.A10-2'
 A, B, C = best_params[material]['A'],best_params[material]['B'], best_params[material]['C']
 indice_TiO2 = cauchy_fn(A,B,C)(wl_exp)
 d_TiO2 = best_thicknesses[0]
